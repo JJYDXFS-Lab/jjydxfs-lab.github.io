@@ -153,6 +153,8 @@ h1 {
   letter-spacing: .045em;
 }
 
+.library { display: grid; gap: 16px; }
+
 .library-entry {
   display: flex;
   align-items: center;
@@ -165,7 +167,7 @@ h1 {
   background: var(--panel);
 }
 
-.library-copy { min-width: 0; }
+.library-copy { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 
 h2 {
   margin: 10px 0 9px;
