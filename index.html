@@ -10,6 +10,7 @@
     <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 256x256" type="image/x-icon">
     <link rel="stylesheet" href="styles.css">
     <script src="script.js" defer></script>
+    <script src="notes.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
@@ -51,6 +52,7 @@
       </header>
       <main id="main" tabindex="-1">
         <section class="identity" aria-labelledby="lab-title">
+          <div class="identity-copy">
           <p class="eyebrow hero-eyebrow"><span></span> A small corner of the internet</p>
           <h1 id="lab-title">JJYDXFS <span class="title-lab">Lab</span><span class="title-star" aria-hidden="true">✧</span></h1>
           <p class="tagline">A small lab for curious things.</p>
@@ -68,6 +70,27 @@
               <span class="member-name">Atom <span aria-hidden="true">↗</span></span>
             </a>
           </nav>
+          </div>
+          <aside class="binary" aria-label="双星小记" hidden>
+            <div class="binary-sky">
+              <div class="binary-track" aria-hidden="true"></div>
+              <div class="binary-track binary-track-outer" aria-hidden="true"></div>
+              <span class="binary-center" aria-hidden="true">+</span>
+              <button class="binary-star star-z" type="button" data-note="daily" aria-label="JJYDXFS：打开一则双星小记" aria-controls="star-note"><span class="star-core"></span><span class="star-name">JJYDXFS</span></button>
+              <button class="binary-star star-atom" type="button" data-note="daily" aria-label="Atom：打开一则双星小记" aria-controls="star-note"><span class="star-core"></span><span class="star-name">Atom</span></button>
+              <button class="binary-secret research-star" type="button" data-note="research" aria-label="特别的星：一则关于 research 的小记" aria-controls="star-note">✧</button>
+              <button class="binary-secret medal-star" type="button" data-note="medal" aria-label="小卫星：一则隐藏小记" aria-controls="star-note"><span></span></button>
+            </div>
+            <p class="binary-caption"><span class="eyebrow">Two stars, shared stories</span><span lang="zh-Hans">点一颗星，拾起一则小记</span></p>
+            <section id="star-note" class="star-note" aria-label="双星小记" hidden>
+              <button class="note-close" type="button" aria-label="关闭小记">×</button>
+              <div aria-live="polite" aria-atomic="true">
+                <p class="note-meta"></p>
+                <blockquote class="note-body" lang="zh-Hans"></blockquote>
+              </div>
+              <button class="note-next" type="button">再拾一则 <span aria-hidden="true">↗</span></button>
+            </section>
+          </aside>
         </section>
         <div class="section-heading"><h2>Things we’re exploring</h2><span class="eyebrow">Projects / 01—03</span></div>
         <section class="library" aria-label="Projects">

@@ -119,3 +119,49 @@ main { padding-bottom: 48px; }
   .site-footer { align-items: flex-start; flex-direction: column; gap: 12px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* Two equal stars and the memories held between them. */
+.identity { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); align-items: center; gap: 28px; }
+.identity-copy { min-width: 0; }
+h1 { font-size: clamp(2.75rem, 5.1vw, 4.8rem); white-space: nowrap; }
+.binary { position: relative; min-width: 0; }
+.binary-sky { position: relative; height: 310px; }
+.binary-track { position: absolute; width: 76%; height: 42%; left: 12%; top: 29%; border: 1px solid #cbb78a40; border-radius: 50%; transform: rotate(-23deg); }
+.binary-track-outer { width: 91%; height: 62%; left: 4.5%; top: 19%; border-color: #9ab9e31c; transform: rotate(-23deg); border-style: dashed; }
+.binary-center { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); color: #cbb78a50; font: 300 18px monospace; }
+.binary-star, .binary-secret { position: absolute; display: grid; place-items: center; width: 48px; height: 48px; padding: 0; border: 0; background: none; color: var(--accent); cursor: pointer; transform: translate(-50%, -50%); border-radius: 50%; }
+.star-z { left: 23%; top: 65%; --star-color: #e9cd92; }
+.star-atom { left: 77%; top: 35%; --star-color: #b3d5ff; }
+.star-core { display: block; width: 17px; height: 17px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff9ed, var(--star-color) 55%, #5d7085); box-shadow: 0 0 14px var(--star-color), 0 0 44px color-mix(in srgb, var(--star-color) 35%, transparent); transition: scale .25s, box-shadow .25s; }
+.star-name { position: absolute; top: 49px; color: var(--star-color); font-size: .75rem; letter-spacing: .04em; opacity: 0; transition: opacity .25s; pointer-events: none; }
+.binary-star:hover .star-name, .binary-star:focus-visible .star-name { opacity: 1; }
+.binary-star:hover .star-core, .binary-star:focus-visible .star-core { scale: 1.2; }
+.research-star { left: 85%; top: 13%; font-size: 25px; color: #d8cba9; }
+.medal-star { left: 18%; top: 83%; }
+.medal-star span { width: 4px; height: 4px; background: #8b9caf; border-radius: 50%; box-shadow: 0 0 7px #a7bde770; }
+.binary-secret:hover, .binary-secret:focus-visible { background: #b7cdea12; }
+.binary-caption { display: grid; gap: 8px; text-align: center; margin: 6px 0 0; }
+.binary-caption > span:last-child { font-size: .8125rem; color: var(--muted); letter-spacing: .06em; }
+.star-note { position: absolute; z-index: 3; inset: 50% 0 auto; transform: translateY(-50%); padding: 28px; border: 1px solid #cbb78a55; border-radius: 8px; background: #0c1421f5; box-shadow: 0 16px 60px #0006; }
+.note-meta { margin: 0 32px 16px 0; color: var(--accent); font-size: .8125rem; line-height: 1.7; }
+.note-body { margin: 0; white-space: pre-line; font-size: 1rem; line-height: 1.9; }
+.note-close, .note-next { min-height: 44px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font: inherit; }
+.note-close { position: absolute; right: 8px; top: 8px; width: 44px; font-size: 24px; }
+.note-next { margin-top: 20px; padding: 0; font-size: .875rem; }
+.note-next span { color: var(--accent); margin-left: 12px; }
+.note-close:hover, .note-next:hover { color: var(--text); }
+@media (max-width: 1000px) {
+  .identity { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; }
+  h1 { font-size: clamp(2.125rem, 5vw, 4rem); }
+  .binary-sky { height: 260px; }
+  .star-note { padding: 24px 20px; }
+}
+@media (max-width: 760px) {
+  .identity { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  h1 { font-size: clamp(2.125rem, 8.5vw, 4rem); white-space: normal; }
+  .binary { width: min(100%, 380px); justify-self: center; }
+  .binary-sky { height: 175px; }
+  .binary-caption { margin-top: 12px; }
+  .star-name { opacity: .8; top: 43px; }
+  .star-note { position: relative; inset: auto; transform: none; margin-top: 20px; }
+}
