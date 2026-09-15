@@ -81,7 +81,8 @@
   }
   function canRun() {
     return !reduced.matches && !document.hidden && inView && panel.hidden && !hovered
-      && !root.contains(document.activeElement) && toggle?.getAttribute('aria-pressed') !== 'true';
+      && !triggers.some(button => button.matches(':focus-visible'))
+      && toggle?.getAttribute('aria-pressed') !== 'true';
   }
   function tick(time) {
     frame = null;
@@ -97,8 +98,14 @@
       frame = null; previous = null;
     } else if (frame === null) frame = requestAnimationFrame(tick);
   }
-  root.addEventListener('pointerenter', event => { if (event.pointerType === 'mouse') { hovered = true; sync(); } });
-  root.addEventListener('pointerleave', () => { hovered = false; sync(); });
+  // Pause only over a clickable star, not the whole empty orbit area.
+  triggers.forEach(button => {
+    button.addEventListener('pointerenter', event => {
+      if (event.pointerType === 'mouse') { hovered = true; sync(); }
+    });
+    button.addEventListener('pointerleave', () => { hovered = false; sync(); });
+    button.addEventListener('pointercancel', () => { hovered = false; sync(); });
+  });
   root.addEventListener('focusin', sync);
   root.addEventListener('focusout', () => queueMicrotask(sync));
   reduced.addEventListener('change', sync);
