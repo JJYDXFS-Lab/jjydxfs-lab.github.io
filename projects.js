@@ -174,6 +174,26 @@
     if (document.hidden) { hovered = null; focused = null; sync(); }
   });
 
+  // Titles in one row share the height of the tallest, so their descriptions line up;
+  // a row of one-line titles keeps no empty second line.
+  const titles = cards.map(card => card.querySelector('.library-copy h2')).filter(Boolean);
+  function alignTitles() {
+    titles.forEach(title => { title.style.minHeight = ''; });
+    const rows = new Map();
+    titles.forEach(title => {
+      const top = Math.round(title.closest('.library-entry').offsetTop);
+      rows.set(top, [...(rows.get(top) || []), title]);
+    });
+    rows.forEach(row => {
+      const tallest = Math.max(...row.map(title => title.getBoundingClientRect().height));
+      row.forEach(title => { title.style.minHeight = `${tallest}px`; });
+    });
+  }
+  const library = document.querySelector('.library');
+  if (library && 'ResizeObserver' in window) new ResizeObserver(alignTitles).observe(library);
+  document.fonts?.ready.then(alignTitles);
+  alignTitles();
+
   // The existing global motion control also disables the tracing transitions.
   const toggle = document.getElementById('motion-toggle');
   if (toggle) {

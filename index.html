@@ -12,8 +12,10 @@
     <script src="sky-place.js" defer></script>
     <script src="sky-data.js" defer></script>
     <script src="script.js" defer></script>
+    <script src="armillary.js" defer></script>
     <script src="notes.js" defer></script>
     <script src="projects.js" defer></script>
+    <script src="miniatures.js" defer></script>
     <script src="games.js" defer></script>
   </head>
   <body>
@@ -81,24 +83,14 @@
           </div>
           <aside class="binary" aria-label="双星小记" hidden>
             <div class="binary-sky">
-              <svg class="astrolabe" viewBox="-160 -160 320 320" fill="none" aria-hidden="true" focusable="false">
-                <circle r="152" class="dial-rim"/>
-                <g class="dial-ring">
-                  <circle r="147" pathLength="360" class="dial-ticks"/>
-                  <circle r="146" pathLength="360" class="dial-major"/>
-                </g>
-                <circle r="122" class="dial-inner"/>
-                <circle r="64" class="dial-inner"/>
-                <path d="M-152 0H152M0-152V152" class="dial-cross"/>
-                <g class="dial-labels"><text x="0" y="-131">00</text><text x="134" y="2.5">90</text><text x="0" y="137">180</text><text x="-134" y="2.5">270</text></g>
-              </svg>
+              <canvas class="armillary armillary-back" aria-hidden="true"></canvas>
               <div class="binary-track" aria-hidden="true"></div>
-              <div class="binary-track binary-track-outer" aria-hidden="true"></div>
               <span class="binary-center" aria-hidden="true">+</span>
               <button class="binary-star star-z" type="button" data-note="daily" aria-label="JJYDXFS：打开一则双星小记" aria-controls="star-note"><span class="star-core"></span><span class="star-name">JJYDXFS</span></button>
               <button class="binary-star star-atom" type="button" data-note="daily" aria-label="Atom：打开一则双星小记" aria-controls="star-note"><span class="star-core"></span><span class="star-name">Atom</span></button>
               <button class="binary-secret research-star" type="button" data-note="research" aria-label="特别的星：一则关于 research 的小记" aria-controls="star-note">✧</button>
               <button class="binary-secret medal-star" type="button" data-note="medal" aria-label="小卫星：一则隐藏小记" aria-controls="star-note"><span></span></button>
+              <canvas class="armillary armillary-front" aria-hidden="true"></canvas>
             </div>
             <p class="binary-caption"><span class="eyebrow">Two stars, shared stories</span><span lang="zh-Hans">点一颗星，拾起一则小记</span></p>
             <section id="star-note" class="star-note" aria-label="双星小记" hidden>

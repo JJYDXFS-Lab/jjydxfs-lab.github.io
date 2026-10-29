@@ -3,6 +3,19 @@
 
   // The sky above one fixed place (set in sky-place.js), at the visitor's current moment.
   const SKY_PLACE = window.LAB_SKY_PLACE || { name: "Greenwich", lat: 51.4769, lon: -0.0005, timeZone: "Europe/London" };
+  // Preview another moment with ?sky-time=2026-10-30T02:00:00+11:00; the sky then runs on from there.
+  const skyOffset = (() => {
+    const requested = Date.parse(new URLSearchParams(location.search).get("sky-time") || "");
+    return Number.isFinite(requested) ? requested - Date.now() : 0;
+  })();
+  const skyNow = () => new Date(Date.now() + skyOffset);
+  // A small read-only clock for other pieces of the sky, such as the armillary sphere.
+  window.LAB_SKY = Object.freeze({
+    place: SKY_PLACE,
+    now: skyNow,
+    sidereal: () => siderealDegrees(skyNow()),
+    sunLongitude: () => sunEquatorial(skyNow()).lon
+  });
 
   const canvas = document.getElementById("starfield");
   const button = document.getElementById("motion-toggle");
@@ -40,6 +53,9 @@
   let milkyWay = null;
   let milkyWayAt = -Infinity;
   let sun = { alt: -30, x: 0 };
+  let moon = null;
+  let moonShine = 0;
+  let moonPinnedUntil = -Infinity;
   const pointer = { x: 0, y: 0, active: false };
   const parallax = { x: 0, y: 0 };
   const target = { x: 0, y: 0 };
@@ -59,6 +75,7 @@
       constellationStars: [...glow.values()].filter(value => value > .05).length,
       meteorActive: meteor !== null,
       sunAltitude: sun.alt,
+      moon: moon && Object.freeze({ altitude: moon.alt, azimuth: moon.az, illumination: moon.lit, phase: moon.phase.en, limb: moon.limb, x: moon.x, y: moon.y }),
       parallax: Object.freeze({ x: parallax.x, y: parallax.y }),
       fpsCap,
       dprCap
@@ -91,7 +108,30 @@
     const g = (357.529 + .98560028 * days) * rad;
     const longitude = (280.459 + .98564736 * days + 1.915 * Math.sin(g) + .02 * Math.sin(2 * g)) * rad;
     const tilt = (23.439 - .00000036 * days) * rad;
-    return { ra: Math.atan2(Math.cos(tilt) * Math.sin(longitude), Math.cos(longitude)) / rad, dec: Math.asin(Math.sin(tilt) * Math.sin(longitude)) / rad };
+    return { lon: longitude / rad, ra: Math.atan2(Math.cos(tilt) * Math.sin(longitude), Math.cos(longitude)) / rad, dec: Math.asin(Math.sin(tilt) * Math.sin(longitude)) / rad };
+  }
+  // The Moon from the largest terms of its orbit; good to about half a degree.
+  function moonEquatorial(date) {
+    const days = date.getTime() / 86400000 - 10957.5;
+    const L = 218.316 + 13.176396 * days;
+    const M = (134.963 + 13.064993 * days) * rad;
+    const F = (93.272 + 13.22935 * days) * rad;
+    const D = (297.85 + 12.190749 * days) * rad;
+    const sunAnomaly = (357.529 + .98560028 * days) * rad;
+    const lon = (L + 6.289 * Math.sin(M) + 1.274 * Math.sin(2 * D - M) + .658 * Math.sin(2 * D) + .214 * Math.sin(2 * M) - .186 * Math.sin(sunAnomaly) - .114 * Math.sin(2 * F)) * rad;
+    const lat = (5.128 * Math.sin(F) + .281 * Math.sin(M + F) + .278 * Math.sin(M - F)) * rad;
+    const tilt = (23.439 - .00000036 * days) * rad;
+    const ra = Math.atan2(Math.sin(lon) * Math.cos(tilt) - Math.tan(lat) * Math.sin(tilt), Math.cos(lon));
+    const dec = Math.asin(Math.sin(lat) * Math.cos(tilt) + Math.cos(lat) * Math.sin(tilt) * Math.sin(lon));
+    return { lon: lon / rad, lat: lat / rad, ra: (ra / rad + 360) % 360, dec: dec / rad };
+  }
+  const moonPhases = [
+    [11.25, "New moon", "新月"], [78.75, "Waxing crescent", "蛾眉月"], [101.25, "First quarter", "上弦月"],
+    [168.75, "Waxing gibbous", "盈凸月"], [191.25, "Full moon", "满月"], [258.75, "Waning gibbous", "亏凸月"],
+    [281.25, "Last quarter", "下弦月"], [348.75, "Waning crescent", "残月"], [360, "New moon", "新月"]
+  ];
+  function unit(ra, dec) {
+    return [Math.cos(dec * rad) * Math.cos(ra * rad), Math.cos(dec * rad) * Math.sin(ra * rad), Math.sin(dec * rad)];
   }
   function galacticToEquatorial(l, b) {
     const poleRa = 192.85948 * rad, poleDec = 27.12825 * rad, poleL = 122.93192 * rad;
@@ -177,6 +217,28 @@
     const s = sunEquatorial(date);
     const sh = horizontal(s.ra, s.dec, lst);
     sun = { alt: sh.alt, x: project(sh.alt, sh.az).x };
+
+    const m = moonEquatorial(date);
+    const mh = horizontal(m.ra, m.dec, lst);
+    // Seen from the ground rather than Earth's centre, the Moon sits about a degree lower.
+    mh.alt -= .95 * Math.cos(mh.alt * rad);
+    const mp = project(mh.alt, mh.az);
+    const age = ((m.lon - s.lon) % 360 + 360) % 360;
+    const elongation = Math.acos(Math.cos(m.lat * rad) * Math.cos((m.lon - s.lon) * rad));
+    // The bright limb faces the Sun along the great circle joining them.
+    const a = unit(m.ra, m.dec), b = unit(s.ra, s.dec);
+    const toward = a.map((value, i) => value + (b[i] - value) * .02);
+    const length = Math.hypot(...toward);
+    const th = horizontal(Math.atan2(toward[1], toward[0]) / rad, Math.asin(toward[2] / length) / rad, lst);
+    th.alt -= .95 * Math.cos(th.alt * rad);
+    const tp = project(th.alt, th.az);
+    moon = {
+      alt: mh.alt, az: mh.az, x: mp.x, y: mp.y,
+      lit: (1 - Math.cos(elongation)) / 2,
+      cosine: Math.cos(elongation),
+      limb: Math.abs(tp.x - mp.x) > width / 2 ? 0 : Math.atan2(tp.y - mp.y, tp.x - mp.x),
+      phase: (([, en, zh]) => ({ en, zh }))(moonPhases.find(([limit]) => age < limit))
+    };
   }
 
   // The Milky Way changes slowly, so it is painted off-screen and reused.
@@ -254,13 +316,14 @@
     if (skyLabel) {
       let time = "";
       try {
-        time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: SKY_PLACE.timeZone }).format(new Date());
+        time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: SKY_PLACE.timeZone }).format(skyNow());
       } catch { /* An unknown time zone simply omits the clock. */ }
-      skyLabel.textContent = `Sky over ${SKY_PLACE.name}${time ? ` · ${time}` : ""}`;
+      const phase = moon ? ` · ${moon.phase.en} ${Math.round(moon.lit * 100)}%` : "";
+      skyLabel.textContent = `Sky over ${SKY_PLACE.name}${time ? ` · ${time}` : ""}${phase}`;
     }
     // The point straight overhead: right ascension is local sidereal time, declination is latitude.
     if (zenithLabel) {
-      const minutes = Math.floor(siderealDegrees(new Date()) * 4);
+      const minutes = Math.floor(siderealDegrees(skyNow()) * 4);
       const dec = SKY_PLACE.lat.toFixed(1).replace("-", "−");
       zenithLabel.textContent = `ZENITH OVER ${SKY_PLACE.name.toUpperCase()} · RA ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m · DEC ${dec}°`;
       zenithLabel.hidden = false;
@@ -268,7 +331,7 @@
   }
 
   function draw(step = 0) {
-    const now = new Date();
+    const now = skyNow();
     placeAll(now);
     if (now - milkyWayAt > 20000) {
       paintMilkyWay(now);
@@ -299,6 +362,14 @@
       const next = value + (near - value) * (1 - Math.exp(-step / (near > value ? 260 : 1100)));
       if (next < .005) glow.delete(id); else glow.set(id, next);
     }
+    // Keep the sky behind the armillary sphere clear, so brass and starlines don't tangle.
+    const instrument = document.querySelector('.binary-sky')?.getBoundingClientRect();
+    const quiet = (x, y) => {
+      if (!instrument || !instrument.width) return 1;
+      const rx = instrument.width * .5, ry = instrument.height * .62;
+      const d = Math.hypot((x - instrument.left - instrument.width / 2) / rx, (y - instrument.top - instrument.height / 2) / ry);
+      return Math.min(1, Math.max(.08, (d - .55) / .45));
+    };
     context.lineWidth = .7;
     for (const line of lines) {
       const shine = glow.get(line.id) || 0;
@@ -308,8 +379,9 @@
         if (a.alt < 0 && b.alt < 0) continue;
         if (Math.abs(a.x - b.x) > width / 2) continue;
         const readingMask = (a.x + b.x) / 2 < width * .55 ? .45 : 1;
-        context.globalAlpha = (base * readingMask + shine * .5) * (1 - daylight * .25);
-        context.strokeStyle = shine > .05 ? "#cbb78a" : "#9cbce4";
+        context.globalAlpha = (base * readingMask + shine * .5) * (1 - daylight * .25) * quiet((a.x + b.x) / 2, (a.y + b.y) / 2);
+        // The sky is drawn in cool silver; brass belongs to the instrument.
+        context.strokeStyle = shine > .05 ? "#c9d6ec" : "#9cbce4";
         context.beginPath();
         context.moveTo(a.x + parallax.x * .5, a.y + parallax.y * .5);
         context.lineTo(b.x + parallax.x * .5, b.y + parallax.y * .5);
@@ -321,8 +393,8 @@
     for (const [id, shine] of glow) {
       const name = names.get(id);
       if (!name || name.alt < 2 || shine < .12) continue;
-      context.globalAlpha = Math.min(1, (shine - .12) * 1.6) * (name.x < width * .55 ? .4 : .8);
-      context.fillStyle = "#e3d6b4";
+      context.globalAlpha = Math.min(1, (shine - .12) * 1.6) * (name.x < width * .55 ? .4 : .8) * quiet(name.x, name.y);
+      context.fillStyle = "#d3dcec";
       context.fillText(`${name.en.toUpperCase()} · ${name.zh}`, name.x + parallax.x * .5, name.y + parallax.y * .5 - 10);
     }
 
@@ -338,7 +410,7 @@
       // Keep the reading area quieter than the open sky to its right.
       const readingMask = x < width * .55 ? .68 : 1;
       const horizonFade = Math.min(1, (star.alt + 1) / 9);
-      const daylightFade = 1 - daylight * Math.min(1, star.mag / 4.5) * .35;
+      const daylightFade = (1 - daylight * Math.min(1, star.mag / 4.5) * .35) * moonWash(star.mag);
       const alpha = Math.min(1, ((star.opacity + twinkle * (star.mag < 2 ? .16 : .07)) * readingMask + star.excitement * .45) * horizonFade * daylightFade);
       if (alpha <= .01) continue;
       if (star.mag < 1.6) {
@@ -355,10 +427,85 @@
       context.arc(x, y, star.radius + star.excitement * .55, 0, Math.PI * 2);
       context.fill();
     }
+    drawMoon(step);
     drawMeteor();
     drawBurst();
     context.globalAlpha = 1;
     frameCount += 1;
+  }
+
+  function moonWash(mag) {
+    if (!moon || moon.alt < 0) return 1;
+    return 1 - moon.lit * Math.min(1, moon.alt / 15) * Math.min(1, mag / 5) * .3;
+  }
+  function moonRadius() {
+    return Math.max(9, Math.min(16, height / altitudeSpan * 1.15));
+  }
+  function nearMoon(x, y) {
+    if (!moon || moon.alt < -1) return false;
+    return Math.hypot(x - moon.x - parallax.x * .15, y - moon.y - parallax.y * .15) < moonRadius() * 2.6;
+  }
+
+  // Phase drawn from the real elongation, bright limb turned toward the Sun.
+  function drawMoon(step) {
+    if (!moon || moon.alt < -2) return;
+    const r = moonRadius();
+    const x = moon.x + parallax.x * .15;
+    const y = moon.y + parallax.y * .15;
+    if (x < -r * 6 || x > width + r * 6 || y < -r * 6 || y > height + r * 6) return;
+    const fade = Math.min(1, (moon.alt + 2) / 6);
+
+    const halo = context.createRadialGradient(x, y, r * .8, x, y, r * (4 + moon.lit * 4));
+    halo.addColorStop(0, "#efe6cc");
+    halo.addColorStop(1, "transparent");
+    context.globalAlpha = (.06 + moon.lit * .16) * fade;
+    context.fillStyle = halo;
+    context.beginPath();
+    context.arc(x, y, r * (4 + moon.lit * 4), 0, Math.PI * 2);
+    context.fill();
+
+    // Earthshine keeps the unlit part faintly visible.
+    context.globalAlpha = .14 * fade;
+    context.fillStyle = "#8fa3c4";
+    context.beginPath();
+    context.arc(x, y, r, 0, Math.PI * 2);
+    context.fill();
+
+    context.save();
+    context.translate(x, y);
+    context.rotate(moon.limb);
+    context.beginPath();
+    context.arc(0, 0, r, -Math.PI / 2, Math.PI / 2, false);
+    context.ellipse(0, 0, Math.max(.01, Math.abs(moon.cosine) * r), r, 0, Math.PI / 2, -Math.PI / 2, moon.cosine > 0);
+    context.closePath();
+    const light = context.createRadialGradient(r * .35, -r * .3, r * .1, 0, 0, r * 1.1);
+    light.addColorStop(0, "#fbf5e6");
+    light.addColorStop(1, "#d9cfb6");
+    context.globalAlpha = fade;
+    context.fillStyle = light;
+    context.fill();
+    context.clip();
+    context.rotate(-moon.limb);
+    context.fillStyle = "#a99f88";
+    context.globalAlpha = .28 * fade;
+    for (const [mx, my, mr] of [[-.28, -.22, .3], [.18, -.3, .22], [.05, .2, .26], [-.35, .3, .16], [.38, .08, .14]]) {
+      context.beginPath();
+      context.arc(mx * r, my * r, mr * r, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.restore();
+
+    // The phase name appears on hover, or for a few seconds after a tap.
+    const wanted = (pointer.active && nearMoon(pointer.x, pointer.y)) || animationTime < moonPinnedUntil ? 1 : 0;
+    moonShine += (wanted - moonShine) * (step ? 1 - Math.exp(-step / (wanted > moonShine ? 220 : 700)) : 1);
+    if (moonShine < .02) return;
+    context.globalAlpha = moonShine * .85 * fade;
+    context.fillStyle = "#e9dfc4";
+    context.font = '11px "SFMono-Regular", Consolas, monospace';
+    // Beside the Moon rather than above it, so it rarely lands on page text.
+    const left = x > width * .7;
+    context.textAlign = left ? "right" : "left";
+    context.fillText(`${moon.phase.en.toUpperCase()} · ${moon.phase.zh} · ${Math.round(moon.lit * 100)}%`, left ? x - r - 12 : x + r + 12, y + 4);
   }
 
   function meteorHead() {
@@ -441,8 +588,13 @@
   }
 
   function onCatchAttempt(event) {
-    if (!meteor || !running) return;
     if (event.target.closest("a, button, input, textarea, select, dialog, [role='dialog']")) return;
+    if (nearMoon(event.clientX, event.clientY)) {
+      moonPinnedUntil = animationTime + 4;
+      if (!running) draw();
+      document.dispatchEvent(new CustomEvent("lab:moon-touched", { detail: { phase: moon.phase.en, illumination: moon.lit } }));
+    }
+    if (!meteor || !running) return;
     if (!nearMeteor(event.clientX, event.clientY)) return;
     const head = meteorHead();
     burst = { x: head.x, y: head.y, start: animationTime, spin: Math.random() * Math.PI };
@@ -497,7 +649,7 @@
     pointer.active = true;
     target.x = Math.max(-1, Math.min(1, event.clientX / window.innerWidth * 2 - 1)) * parallaxLimit;
     target.y = Math.max(-1, Math.min(1, event.clientY / window.innerHeight * 2 - 1)) * parallaxLimit;
-    document.documentElement.classList.toggle("meteor-near", nearMeteor(event.clientX, event.clientY));
+    document.documentElement.classList.toggle("meteor-near", nearMeteor(event.clientX, event.clientY) || nearMoon(event.clientX, event.clientY));
   }
 
   function syncPointer() {
