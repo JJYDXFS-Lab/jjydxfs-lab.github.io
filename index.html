@@ -9,12 +9,19 @@
     <title>JJYDXFS Lab</title>
     <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48 256x256" type="image/x-icon">
     <link rel="stylesheet" href="styles.css">
+    <script src="sky-place.js" defer></script>
+    <script src="sky-data.js" defer></script>
     <script src="script.js" defer></script>
     <script src="notes.js" defer></script>
+    <script src="projects.js" defer></script>
+    <script src="games.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
     <div class="sky" aria-hidden="true">
+      <div class="nebula"></div>
+      <div class="sky-twilight"></div>
+      <div class="milky-way"></div>
       <svg class="static-stars" viewBox="0 0 1440 1080" preserveAspectRatio="xMidYMid slice" focusable="false">
         <g class="fallback-stars" fill="#dce9fa" opacity=".42">
           <circle cx="80" cy="174" r="1"/><circle cx="278" cy="100" r=".8"/>
@@ -54,6 +61,7 @@
         <section class="identity" aria-labelledby="lab-title">
           <div class="identity-copy">
           <p class="eyebrow hero-eyebrow"><span></span> A small corner of the internet</p>
+          <p id="sky-zenith" class="zenith-line" hidden></p>
           <h1 id="lab-title">JJYDXFS <span class="title-lab">Lab</span><span class="title-star" aria-hidden="true">✧</span></h1>
           <p class="tagline">A small lab for curious things.</p>
           <div class="lab-description">
@@ -73,6 +81,17 @@
           </div>
           <aside class="binary" aria-label="双星小记" hidden>
             <div class="binary-sky">
+              <svg class="astrolabe" viewBox="-160 -160 320 320" fill="none" aria-hidden="true" focusable="false">
+                <circle r="152" class="dial-rim"/>
+                <g class="dial-ring">
+                  <circle r="147" pathLength="360" class="dial-ticks"/>
+                  <circle r="146" pathLength="360" class="dial-major"/>
+                </g>
+                <circle r="122" class="dial-inner"/>
+                <circle r="64" class="dial-inner"/>
+                <path d="M-152 0H152M0-152V152" class="dial-cross"/>
+                <g class="dial-labels"><text x="0" y="-131">00</text><text x="134" y="2.5">90</text><text x="0" y="137">180</text><text x="-134" y="2.5">270</text></g>
+              </svg>
               <div class="binary-track" aria-hidden="true"></div>
               <div class="binary-track binary-track-outer" aria-hidden="true"></div>
               <span class="binary-center" aria-hidden="true">+</span>
@@ -92,19 +111,20 @@
             </section>
           </aside>
         </section>
-        <div class="section-heading"><h2>Things we’re exploring</h2><span class="eyebrow">Projects / 01—03</span></div>
+        <div class="horizon" aria-hidden="true"></div>
+        <div class="section-heading"><h2>Things we’re exploring</h2><span class="eyebrow">Projects / 01—05</span><button class="atlas-tracker" type="button" aria-describedby="atlas-hint"><span class="atlas-slots" aria-hidden="true"></span><span class="atlas-count">0/5</span></button><span id="atlas-hint" class="visually-hidden">Constellation atlas. Spend a moment on each project to light its constellation; light all five to open a hidden note.</span></div>
         <section class="library" aria-label="Projects">
-          <a class="library-entry" href="https://jjydxfs-lab.github.io/library-of-the-citadel/">
+          <a class="library-entry" data-project="library" href="https://jjydxfs-lab.github.io/library-of-the-citadel/">
             <div class="project-art"><svg viewBox="0 0 320 140" fill="none" aria-hidden="true"><path d="M68 103V39c31-9 60-4 92 10 32-14 61-19 92-10v64c-33-8-61-5-92 9-31-14-59-17-92-9Z"/><path d="M160 49v63M82 52c23-4 43 0 63 8m-63 6c23-4 43 0 63 8m-63 6c23-4 43 0 63 8M175 60l25-13 24 18 20-11m-69 34 25-41"/><circle cx="200" cy="47" r="3"/><circle cx="224" cy="65" r="3"/><circle cx="175" cy="88" r="2"/><path class="art-orbit" d="M38 84C2 22 280-4 287 53c5 37-157 77-225 57"/></svg></div>
             <div class="library-copy">
               <span class="eyebrow">Library</span>
               <p class="byline">By <span>Atom × Claude</span></p>
               <h2 id="library-title">Library of the Citadel</h2>
-              <p>A place to collect, connect, and return to ideas.</p>
+              <p>A growing library of recipes, practical notes, and original stories.</p>
             </div>
             <span class="visit">Explore project <span aria-hidden="true">↗</span></span>
           </a>
-          <a class="library-entry" href="https://jjydxfs-lab.github.io/awesome-human-agent-collaboration-in-data-science/">
+          <a class="library-entry" data-project="literature" href="https://jjydxfs-lab.github.io/awesome-human-agent-collaboration-in-data-science/">
             <div class="project-art"><svg viewBox="0 0 320 140" fill="none" aria-hidden="true"><path d="m69 35 72 34-72 36m72-36 74-35m-74 35 74 36m0-71 38 36-38 35M69 35v70m146-71v71"/><circle cx="69" cy="35" r="8"/><circle cx="69" cy="105" r="8"/><circle cx="141" cy="69" r="16"/><circle cx="215" cy="34" r="8"/><circle cx="215" cy="105" r="8"/><circle cx="253" cy="70" r="5"/><path d="m134 69 5 5 10-11"/><ellipse class="art-orbit" cx="160" cy="70" rx="133" ry="58"/></svg></div>
             <div class="library-copy">
               <span class="eyebrow">Literature Collection</span>
@@ -114,7 +134,7 @@
             </div>
             <span class="visit">Explore project <span aria-hidden="true">↗</span></span>
           </a>
-          <a class="library-entry" href="https://jjydxfs.github.io/atom-reading-group-2026/">
+          <a class="library-entry" data-project="personal-agent" href="https://jjydxfs.github.io/atom-reading-group-2026/">
             <div class="project-art"><svg viewBox="0 0 320 140" fill="none" aria-hidden="true"><ellipse cx="147" cy="70" rx="87" ry="38" transform="rotate(-22 147 70)"/><ellipse cx="174" cy="70" rx="87" ry="38" transform="rotate(22 174 70)"/><path class="art-orbit" d="M33 70h254M160 13v114"/><circle cx="94" cy="46" r="6"/><circle cx="226" cy="93" r="6"/><circle cx="160" cy="70" r="11"/><circle cx="160" cy="70" r="3"/></svg></div>
             <div class="library-copy">
               <span class="eyebrow">Reading group</span>
@@ -124,15 +144,44 @@
             </div>
             <span class="visit">Explore project <span aria-hidden="true">↗</span></span>
           </a>
+          <a class="library-entry" data-project="atlas" href="https://jjydxfs-lab.github.io/agent-atlas/">
+            <div class="project-art"><svg viewBox="0 0 320 140" fill="none" aria-hidden="true"><path d="M57 86 105 35 164 65 214 27 266 71 222 112 164 65 112 111 57 86M105 35l7 76M214 27l8 85"/><circle cx="57" cy="86" r="4"/><circle cx="105" cy="35" r="6"/><circle cx="164" cy="65" r="10"/><circle cx="214" cy="27" r="4"/><circle cx="266" cy="71" r="5"/><circle cx="222" cy="112" r="6"/><circle cx="112" cy="111" r="4"/><ellipse class="art-orbit" cx="160" cy="70" rx="137" ry="61"/></svg></div>
+            <div class="library-copy">
+              <span class="eyebrow">Knowledge Atlas</span>
+              <p class="byline">By <span>Atom × Codex</span></p>
+              <h2>Agent Atlas</h2>
+              <p>A source-linked atlas of intelligent-agent concepts and their connections.</p>
+            </div>
+            <span class="visit">Explore atlas <span aria-hidden="true">↗</span></span>
+          </a>
+          <a class="library-entry" data-project="skills" href="https://github.com/JJYDXFS-Lab/academic-skills">
+            <div class="project-art"><svg viewBox="0 0 320 140" fill="none" aria-hidden="true"><path d="M62 30h91v80H62zM167 30h91v80h-91zM77 49h46M77 63h60M77 77h38M182 49h46M182 63h60M182 77h38M118 95l6 6 15-17M223 95l6 6 15-17"/><path class="art-orbit" d="M36 70h26m91 0h14m91 0h26M160 14v112"/><circle cx="36" cy="70" r="4"/><circle cx="284" cy="70" r="4"/></svg></div>
+            <div class="library-copy">
+              <span class="eyebrow">Research Tools</span>
+              <p class="byline">By <span>Atom × JJYDXFS</span></p>
+              <h2>Academic Skills</h2>
+              <p>Agent skills for reviewing academic prose and auditing LaTeX bibliographies.</p>
+            </div>
+            <span class="visit">Explore skills <span aria-hidden="true">↗</span></span>
+          </a>
         </section>
       </main>
       <footer class="site-footer">
         <p class="copyright">© 2026 <a href="https://jjydxfs.github.io/">JJYDXFS</a> &amp; <a href="https://atom-of-jjydxfs.github.io/">Atom (原子)</a>. All rights reserved.</p>
+        <p id="sky-place" class="sky-place"></p>
+        <button class="meteor-fallback" type="button" hidden>✧ Catch a falling star</button>
         <button id="motion-toggle" class="motion-toggle" type="button" aria-pressed="false" hidden>
           <span class="motion-indicator" aria-hidden="true"></span>
           <span id="motion-label">Pause stars</span>
         </button>
       </footer>
     </div>
+    <dialog class="lab-story" aria-labelledby="lab-story-meta">
+      <button class="note-close" type="button" aria-label="Close">×</button>
+      <p id="lab-story-meta" class="note-meta"></p>
+      <h2 class="note-title" lang="zh-Hans" hidden></h2>
+      <blockquote class="note-body" lang="zh-Hans"></blockquote>
+      <p class="note-source" lang="zh-Hans" hidden></p>
+    </dialog>
   </body>
 </html>
