@@ -23,6 +23,8 @@
   let width = 0, height = 0, radius = 0;
   let spin = 0, previous = null, frame = null, inView = true;
   const lean = { x: 0, y: 0, tx: 0, ty: 0 };
+  // A push from the visitor's hand, in radians per millisecond, fading back to the turntable.
+  let push = 0, drag = null;
 
   // Celestial direction (RA, Dec in degrees) to local east / north / up.
   function local(ra, dec, lst) {
@@ -46,7 +48,22 @@
     const z1 = x * Math.sin(yaw) + z * Math.cos(yaw);
     const y2 = up * Math.cos(pitch) + z1 * Math.sin(pitch);
     const z2 = z1 * Math.cos(pitch) - up * Math.sin(pitch);
-    return { x: width / 2 + x1 * radius * scale, y: height / 2 - y2 * radius * scale, z: z2 };
+    return { x: width / 2 + x1 * radius * scale, y: height / 2 - y2 * radius * scale, z: z2, nx: x1, ny: y2 };
+  }
+
+  // A lamp above and to the left of the viewer. Each piece of brass shines by how
+  // squarely it faces the halfway direction between lamp and eye, so as the
+  // instrument turns or leans, the highlights slide along the rings like real metal.
+  const lamp = (() => {
+    const l = [-.5, .65, -.58], v = [0, 0, -1];
+    const h = l.map((c, i) => c + v[i]);
+    const n = Math.hypot(...h);
+    return h.map(c => c / n);
+  })();
+  function glint(p) {
+    const n = Math.hypot(p.nx, p.ny, p.z) || 1;
+    const facing = Math.max(0, (p.nx * lamp[0] + p.ny * lamp[1] + p.z * lamp[2]) / n);
+    return Math.pow(facing, 6) * .7 + Math.pow(facing, 40) * .9;
   }
 
   function ring(points, style) {
@@ -75,6 +92,35 @@
       g.strokeStyle = style.shine;
       g.lineWidth = Math.max(.6, style.width * .3);
       path(-style.width * .25);
+      // Where the ring faces the lamp, a brighter glint rides on top. Neighbouring
+      // pieces of similar brightness share one stroke, so the glint stays smooth.
+      g.lineCap = 'butt';
+      g.strokeStyle = '#fff3d4';
+      const steps = 16;
+      let level = 0, piece = [];
+      const stroke = (width, offset) => {
+        g.lineWidth = width;
+        g.beginPath();
+        g.moveTo(piece[0].x, piece[0].y + offset);
+        piece.slice(1).forEach(p => g.lineTo(p.x, p.y + offset));
+        g.stroke();
+      };
+      const shine = () => {
+        if (!level || piece.length < 2) return;
+        const strength = level / steps * (layer ? 1 : .35) * style.alpha;
+        // A soft bloom around the glint, then the bright line itself.
+        g.globalAlpha = strength * .22;
+        stroke(style.width * 2.4, 0);
+        g.globalAlpha = strength;
+        stroke(Math.max(.8, style.width * (.3 + level / steps * .3)), -style.width * .2);
+      };
+      for (let i = 0; i < run.length; i += 1) {
+        const next = Math.min(steps, Math.round(glint(run[i]) * steps));
+        piece.push(run[i]);
+        if (next !== level) { shine(); piece = [run[i]]; level = next; }
+      }
+      shine();
+      g.lineCap = 'round';
     };
     for (let i = 1; i < projected.length; i += 1) {
       const next = projected[i].z < 0 ? 1 : 0;
@@ -129,6 +175,26 @@
     g.fillText(text, s.x, s.y);
   }
 
+  // The twelve signs, engraved just inside the ecliptic and divided by short ticks.
+  const signs = ['\u2648', '\u2649', '\u264A', '\u264B', '\u264C', '\u264D', '\u264E', '\u264F', '\u2650', '\u2651', '\u2652', '\u2653']
+    .map(glyph => `${glyph}\uFE0E`);
+  function zodiac(lst, sunLon) {
+    const current = Math.floor(((sunLon % 360) + 360) % 360 / 30);
+    signs.forEach((glyph, i) => {
+      const p = local(...eclipticToEquatorial(i * 30 + 15), lst);
+      const s = view(p, .87);
+      const near = s.z < 0;
+      const g = contexts[near ? 1 : 0];
+      const lit = i === current;
+      g.globalAlpha = lit ? (near ? .95 : .5) : (near ? .5 : .14);
+      g.fillStyle = lit ? '#ffd79a' : '#cdb88a';
+      g.font = `${Math.max(9, radius * (lit ? .1 : .08))}px "Apple Symbols", "Segoe UI Symbol", "Noto Sans Symbols 2", "Noto Sans Symbols", serif`;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(glyph, s.x, s.y);
+    });
+  }
+
   const brass = { body: '#7a6443', shine: '#f0d9a2', width: 3.2, alpha: 1, scale: 1 };
   const fixed = { body: '#6a5a40', shine: '#d9c08a', width: 4.2, alpha: .95, scale: 1.1 };
   const slim = { body: '#6f5d42', shine: '#e8cf98', width: 1.8, alpha: .8, scale: 1 };
@@ -147,7 +213,11 @@
     const equator = a => local(a, 0, lst);
     ring(circle(equator), brass);
     ticks(equator, 24, 1, 1.045, brass);
-    ring(circle(a => local(...eclipticToEquatorial(a), lst)), { ...slim, shine: '#f3c98a' });
+    const ecliptic = a => local(...eclipticToEquatorial(a), lst);
+    const sunLon = sky.sunLongitude();
+    ring(circle(ecliptic), { ...slim, shine: '#f3c98a' });
+    ticks(ecliptic, 12, .965, 1.035, slim);
+    zodiac(lst, sunLon);
 
     // The polar axis runs through the whole instrument.
     const north = local(0, 90, lst), south = local(0, -90, lst);
@@ -162,7 +232,7 @@
     bead(south.map(v => v * 1.16), Math.max(2, radius * .02), '#b89a62', '#e8cf9866');
 
     // The Sun's bead rides the ecliptic at its real longitude.
-    const [sunRa, sunDec] = eclipticToEquatorial(sky.sunLongitude());
+    const [sunRa, sunDec] = eclipticToEquatorial(sunLon);
     bead(local(sunRa, sunDec, lst), Math.max(3, radius * .035), '#f2b45c', '#ffcf8a88');
     contexts.forEach(g => { g.globalAlpha = 1; });
   }
@@ -189,6 +259,10 @@
     if (previous !== null) {
       const step = Math.min(time - previous, 80);
       spin += step * Math.PI * 2 / 180000; // one turn every three minutes
+      if (!drag) {
+        spin += push * step;
+        push *= Math.exp(-step / 900);
+      }
       lean.x += (lean.tx - lean.x) * (1 - Math.exp(-step / 500));
       lean.y += (lean.ty - lean.y) * (1 - Math.exp(-step / 500));
     }
@@ -209,6 +283,46 @@
     lean.ty = Math.max(-1, Math.min(1, (event.clientY - (bounds.top + bounds.height / 2)) / 500)) * 8 * rad;
   }, { passive: true });
   document.addEventListener('pointerleave', () => { lean.tx = lean.ty = 0; });
+
+  // Drag sideways to spin the instrument; it coasts and settles back into its slow turn.
+  // A short press stays a click, so the stars still open their notes.
+  host.addEventListener('pointerdown', event => {
+    if (event.button !== 0) return;
+    drag = { id: event.pointerId, x: event.clientX, last: event.clientX, time: event.timeStamp, moved: false };
+    push = 0;
+  });
+  host.addEventListener('pointermove', event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    if (!drag.moved && Math.abs(event.clientX - drag.x) < 6) return;
+    if (!drag.moved) {
+      drag.moved = true;
+      try { host.setPointerCapture(event.pointerId); } catch { /* The pointer already left; the drag still works. */ }
+      host.classList.add('is-turning');
+    }
+    // Yaw turns the near side to the right, so the rings follow the hand.
+    const turn = (event.clientX - drag.last) / (radius || 1);
+    const elapsed = Math.max(8, event.timeStamp - drag.time);
+    spin += turn;
+    push = push * .5 + turn / elapsed * .5;
+    drag.last = event.clientX;
+    drag.time = event.timeStamp;
+    if (frame === null) draw();
+  });
+  const release = event => {
+    if (!drag || event.pointerId !== drag.id) return;
+    // A hand that stopped before letting go leaves the instrument where it is.
+    if (event.timeStamp - drag.time > 120) push = 0;
+    push = Math.max(-.006, Math.min(.006, still() ? 0 : push));
+    if (drag.moved) {
+      host.classList.remove('is-turning');
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      window.setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+    }
+    drag = null;
+  };
+  const swallow = event => { event.stopPropagation(); event.preventDefault(); };
+  host.addEventListener('pointerup', release);
+  host.addEventListener('pointercancel', release);
 
   new ResizeObserver(resize).observe(host);
   if ('IntersectionObserver' in window) {

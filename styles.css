@@ -389,3 +389,7 @@ html.has-miniatures .is-illuminated .project-art svg { transform: none; }
 @media (hover: hover) {
   .site-header .text-link:hover { border-color: #cbb78a66; background: #cbb78a12; color: var(--text); text-decoration: none; }
 }
+
+/* The armillary can be spun by hand: drag sideways, vertical swipes still scroll. */
+.binary-sky { cursor: grab; touch-action: pan-y; }
+.binary-sky.is-turning, .binary-sky.is-turning * { cursor: grabbing; }
