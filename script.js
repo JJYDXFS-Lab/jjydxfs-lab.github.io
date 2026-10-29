@@ -340,7 +340,8 @@
     }
     context.clearRect(0, 0, width, height);
     const daylight = Math.max(0, Math.min(1, (sun.alt + 6) / 18));
-    if (milkyWay) {
+    // A zero-sized canvas (a hidden or not-yet-laid-out page) has nothing to draw yet.
+    if (milkyWay && milkyWay.width && milkyWay.height) {
       context.globalAlpha = 1 - daylight * .3;
       context.drawImage(milkyWay, parallax.x * .2, parallax.y * .2, width, height);
     }

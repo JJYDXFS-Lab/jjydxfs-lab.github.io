@@ -379,3 +379,13 @@ html.meteor-near, html.meteor-near body { cursor: pointer; }
 html.has-miniatures .is-illuminated .project-art svg { transform: none; }
 /* Row titles are aligned by projects.js; no fixed two-line reserve. */
 .library-copy h2 { min-height: 0; text-wrap: balance; }
+
+/* Typography rhythm borrowed from Atom's homepage (weights and spacing, not its palette). */
+.tagline { font-size: clamp(1.2rem, 2.2vw, 1.6rem); font-weight: 600; letter-spacing: -.022em; color: #e6deee; }
+.english-line { font-size: clamp(1.02rem, 1.4vw, 1.15rem); line-height: 1.75; }
+.lab-description { margin-top: 20px; }
+.hero-eyebrow { color: #b9c4d4; font-weight: 700; letter-spacing: .16em; }
+.site-header .text-link { min-height: 40px; padding: 8px 16px; border: 1px solid #a3bbdb2e; border-radius: 999px; background: #ffffff0b; color: #c4ccd8; font-weight: 600; gap: 10px; transition: border-color .25s ease, background .25s ease; }
+@media (hover: hover) {
+  .site-header .text-link:hover { border-color: #cbb78a66; background: #cbb78a12; color: var(--text); text-decoration: none; }
+}

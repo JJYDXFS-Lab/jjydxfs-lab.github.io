@@ -190,7 +190,10 @@
     });
   }
   const library = document.querySelector('.library');
-  if (library && 'ResizeObserver' in window) new ResizeObserver(alignTitles).observe(library);
+  // Align on the next frame, so changing heights never re-enters the observer callback.
+  let aligning = null;
+  const scheduleAlign = () => { if (aligning === null) aligning = requestAnimationFrame(() => { aligning = null; alignTitles(); }); };
+  if (library && 'ResizeObserver' in window) new ResizeObserver(scheduleAlign).observe(library);
   document.fonts?.ready.then(alignTitles);
   alignTitles();
 
