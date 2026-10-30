@@ -17,6 +17,8 @@ The site is plain HTML, CSS, and JavaScript and requires no build step.
 
 The background is the real night sky above one place, computed for the visitor's current moment: naked-eye stars, the Milky Way, constellations that name themselves near the cursor, and a sky that warms at twilight. A few small games live in it too.
 
+The brass armillary sphere beside the two stars can be spun by hand, and its ecliptic ring doubles as a time dial: drag along the ring to move the whole sky to another date at the same hour, and it drifts back to now when released.
+
 To move the sky, edit only [`sky-place.js`](sky-place.js):
 
 ```js

@@ -393,3 +393,13 @@ html.has-miniatures .is-illuminated .project-art svg { transform: none; }
 /* The armillary can be spun by hand: drag sideways, vertical swipes still scroll. */
 .binary-sky { cursor: grab; touch-action: pan-y; }
 .binary-sky.is-turning, .binary-sky.is-turning * { cursor: grabbing; }
+
+/* The armillary's time dial and sign labels (armillary.js). */
+.binary-sky.is-dialled .binary-star, .binary-sky.is-dialled .binary-secret { opacity: .55; transition: opacity .4s ease; }
+.binary-caption .eyebrow { transition: color .3s ease; }
+.binary-sky.is-dialled + .binary-caption .eyebrow { color: #f0d9a2; }
+.sign-label { position: absolute; z-index: 3; margin: 0; padding: 5px 9px 6px; transform: translate(-50%, calc(-100% - 12px)); border: 1px solid #cbb78a40; border-radius: 6px; background: #0b111dd9; color: #e6dcc4; font: 600 .6875rem/1.35 "SFMono-Regular", Consolas, monospace; letter-spacing: .06em; white-space: nowrap; text-align: center; pointer-events: none; }
+.sign-label span { display: block; margin-top: 2px; color: #a9a08c; font-weight: 400; letter-spacing: .04em; }
+.sign-label.is-lit { border-color: #f3c98a80; }
+.sign-label.is-lit span { color: #f3c98a; }
+.binary-sky.is-over-ecliptic { cursor: ew-resize; }

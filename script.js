@@ -8,13 +8,33 @@
     const requested = Date.parse(new URLSearchParams(location.search).get("sky-time") || "");
     return Number.isFinite(requested) ? requested - Date.now() : 0;
   })();
-  const skyNow = () => new Date(Date.now() + skyOffset);
-  // A small read-only clock for other pieces of the sky, such as the armillary sphere.
+  // The armillary's time dial can move the whole sky to another date for a while.
+  // Whole days go into the clock; the fraction of a day only nudges the stars, Sun and Moon
+  // along by that much of their daily drift, so the hour stays put while the date glides.
+  let dialOffset = 0;
+  let dialFraction = 0;
+  let daylightAt = 0;
+  let dialFrame = null;
+  const skyNow = () => new Date(Date.now() + skyOffset + dialOffset);
+  // A small clock for other pieces of the sky, such as the armillary sphere.
   window.LAB_SKY = Object.freeze({
     place: SKY_PLACE,
     now: skyNow,
     sidereal: () => siderealDegrees(skyNow()),
-    sunLongitude: () => sunEquatorial(skyNow()).lon
+    sunLongitude: () => sunEquatorial(ephemeris(skyNow())).lon,
+    moon: () => moonEquatorial(ephemeris(skyNow())),
+    dial: () => dialOffset + dialFraction * 86400000,
+    setDial(ms) {
+      const days = Number.isFinite(ms) ? ms / 86400000 : 0;
+      const whole = Math.round(days);
+      dialOffset = whole * 86400000;
+      dialFraction = days - whole;
+      document.documentElement.classList.toggle("sky-dialing", days !== 0);
+      // Back to now: paint the Milky Way at full quality again.
+      if (!days) milkyWayAt = -Infinity;
+      // A still sky redraws on request; a running one picks the change up on its next frame.
+      if (!running && dialFrame === null) dialFrame = requestAnimationFrame(() => { dialFrame = null; draw(); });
+    }
   });
 
   const canvas = document.getElementById("starfield");
@@ -93,7 +113,11 @@
   // --- Astronomy: low-precision formulas, plenty for a background sky. ---
   function siderealDegrees(date) {
     const days = date.getTime() / 86400000 - 10957.5;
-    return ((280.46061837 + 360.98564736629 * days + SKY_PLACE.lon) % 360 + 360) % 360;
+    return ((280.46061837 + 360.98564736629 * days + .98564736629 * dialFraction + SKY_PLACE.lon) % 360 + 360) % 360;
+  }
+  // The Sun and Moon move on with the dial's fraction of a day, so they glide instead of stepping.
+  function ephemeris(date) {
+    return dialFraction ? new Date(date.getTime() + dialFraction * 86400000) : date;
   }
   function horizontal(ra, dec, lst) {
     const hourAngle = (lst - ra) * rad;
@@ -214,11 +238,11 @@
       const p = project(h.alt, h.az);
       name.alt = h.alt; name.x = p.x; name.y = p.y;
     }
-    const s = sunEquatorial(date);
+    const s = sunEquatorial(ephemeris(date));
     const sh = horizontal(s.ra, s.dec, lst);
     sun = { alt: sh.alt, x: project(sh.alt, sh.az).x };
 
-    const m = moonEquatorial(date);
+    const m = moonEquatorial(ephemeris(date));
     const mh = horizontal(m.ra, m.dec, lst);
     // Seen from the ground rather than Earth's centre, the Moon sits about a degree lower.
     mh.alt -= .95 * Math.cos(mh.alt * rad);
@@ -242,12 +266,13 @@
   }
 
   // The Milky Way changes slowly, so it is painted off-screen and reused.
-  function paintMilkyWay(date) {
+  function paintMilkyWay(date, quick = false) {
     const lst = siderealDegrees(date);
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, dprCap);
+    // A quick paint is a third of the size: soft anyway, and cheap enough for every frame.
+    const pixelRatio = quick ? .33 : Math.min(window.devicePixelRatio || 1, dprCap);
     milkyWay = milkyWay || document.createElement("canvas");
-    milkyWay.width = Math.round(width * pixelRatio);
-    milkyWay.height = Math.round(height * pixelRatio);
+    const w = Math.round(width * pixelRatio), h = Math.round(height * pixelRatio);
+    if (milkyWay.width !== w || milkyWay.height !== h) { milkyWay.width = w; milkyWay.height = h; }
     const paint = milkyWay.getContext("2d");
     paint.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     paint.clearRect(0, 0, width, height);
@@ -316,7 +341,9 @@
     if (skyLabel) {
       let time = "";
       try {
-        time = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: SKY_PLACE.timeZone }).format(skyNow());
+        // A dialled sky names its date, so the clock never pretends to be now.
+        const format = dialOffset ? { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" } : { hour: "2-digit", minute: "2-digit" };
+        time = new Intl.DateTimeFormat("en-GB", { ...format, timeZone: SKY_PLACE.timeZone }).format(skyNow());
       } catch { /* An unknown time zone simply omits the clock. */ }
       const phase = moon ? ` · ${moon.phase.en} ${Math.round(moon.lit * 100)}%` : "";
       skyLabel.textContent = `Sky over ${SKY_PLACE.name}${time ? ` · ${time}` : ""}${phase}`;
@@ -333,7 +360,13 @@
   function draw(step = 0) {
     const now = skyNow();
     placeAll(now);
-    if (now - milkyWayAt > 20000) {
+    if (dialOffset || dialFraction) {
+      // While the dial turns, a small, quick Milky Way follows every frame; the tint and
+      // labels, which repaint the whole page, follow ten times a second.
+      paintMilkyWay(now, true);
+      milkyWayAt = -Infinity;
+      if (performance.now() - daylightAt > 100) { daylightAt = performance.now(); syncDaylight(); }
+    } else if (Math.abs(now - milkyWayAt) > 20000) {
       paintMilkyWay(now);
       milkyWayAt = now.getTime();
       syncDaylight();
@@ -610,9 +643,11 @@
     if (!running) return;
     if (previousTime === null) previousTime = timestamp;
     const elapsed = timestamp - previousTime;
-    if (elapsed >= frameInterval) {
-      const step = Math.min(80, Math.floor(elapsed / frameInterval) * frameInterval);
-      previousTime = timestamp - elapsed % frameInterval;
+    // The sky keeps pace with the armillary while its dial turns.
+    const interval = dialOffset || dialFraction ? 1000 / 60 : frameInterval;
+    if (elapsed >= interval) {
+      const step = Math.min(80, Math.floor(elapsed / interval) * interval);
+      previousTime = timestamp - elapsed % interval;
       animationTime += step / 1000;
       const smoothing = 1 - Math.exp(-step / 650);
       parallax.x += (target.x - parallax.x) * smoothing;

@@ -23,8 +23,13 @@
   let width = 0, height = 0, radius = 0;
   let spin = 0, previous = null, frame = null, inView = true;
   const lean = { x: 0, y: 0, tx: 0, ty: 0 };
-  // A push from the visitor's hand, in radians per millisecond, fading back to the turntable.
-  let push = 0, drag = null;
+  // The time dial: days away from now, how fast they are still moving, and the hand on it.
+  const dial = { days: 0, push: 0, holdUntil: 0, frame: null, previous: null, reset: null };
+  // The hand on the instrument: spinning it, or turning the date by the ecliptic.
+  let drag = null, push = 0, eclipticHot = false, eclipticPath = [];
+  // Brief lights: a glint running round the ecliptic, and a flare on the moon bead.
+  let pulse = null, flare = null;
+  let signSpots = [], pointedSign = null, tappedSign = null, tapTimer = null;
 
   // Celestial direction (RA, Dec in degrees) to local east / north / up.
   function local(ra, dec, lst) {
@@ -147,7 +152,7 @@
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
     }
   }
-  function bead(p, size, color, glow) {
+  function bead(p, size, color, glow, light = '#fff6df') {
     const s = view(p);
     const g = contexts[s.z < 0 ? 1 : 0];
     const r = size * (s.z < 0 ? 1 : .8);
@@ -158,7 +163,7 @@
     g.fillStyle = halo;
     g.fillRect(s.x - r * 4, s.y - r * 4, r * 8, r * 8);
     const body = g.createRadialGradient(s.x - r * .35, s.y - r * .35, r * .1, s.x, s.y, r);
-    body.addColorStop(0, '#fff6df');
+    body.addColorStop(0, light);
     body.addColorStop(1, color);
     g.globalAlpha = s.z < 0 ? 1 : .5;
     g.fillStyle = body;
@@ -192,8 +197,74 @@
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillText(glyph, s.x, s.y);
+      signSpots[i] = { x: s.x, y: s.y, near, lit };
     });
   }
+
+  // Each sign's name and the dates the Sun usually spends in it.
+  const signNames = [
+    ['Aries', '白羊宫', '3.21 – 4.19'], ['Taurus', '金牛宫', '4.20 – 5.20'], ['Gemini', '双子宫', '5.21 – 6.21'],
+    ['Cancer', '巨蟹宫', '6.22 – 7.22'], ['Leo', '狮子宫', '7.23 – 8.22'], ['Virgo', '处女宫', '8.23 – 9.22'],
+    ['Libra', '天秤宫', '9.23 – 10.22'], ['Scorpio', '天蝎宫', '10.23 – 11.21'], ['Sagittarius', '人马宫', '11.22 – 12.21'],
+    ['Capricorn', '摩羯宫', '12.22 – 1.19'], ['Aquarius', '宝瓶宫', '1.20 – 2.18'], ['Pisces', '双鱼宫', '2.19 – 3.20']
+  ];
+  const signLabel = document.createElement('p');
+  signLabel.className = 'sign-label';
+  signLabel.setAttribute('aria-hidden', 'true');
+  signLabel.hidden = true;
+  host.append(signLabel);
+  function placeSignLabel() {
+    const i = pointedSign ?? tappedSign;
+    const spot = i === null ? null : signSpots[i];
+    signLabel.hidden = !spot;
+    if (!spot) return;
+    const [en, zh, dates] = signNames[i];
+    const text = `${signs[i]} ${en.toUpperCase()} · ${zh}`;
+    const note = spot.lit ? `${dates} · 太阳在此宫` : dates;
+    if (signLabel.dataset.text !== text + note) {
+      signLabel.dataset.text = text + note;
+      signLabel.replaceChildren(text, Object.assign(document.createElement('span'), { textContent: note }));
+    }
+    signLabel.style.left = `${spot.x}px`;
+    signLabel.style.top = `${spot.y}px`;
+    signLabel.classList.toggle('is-lit', spot.lit);
+  }
+  function signAt(x, y) {
+    let best = null, distance = 16;
+    signSpots.forEach((spot, i) => {
+      const d = Math.hypot(spot.x - x, spot.y - y) - (spot.near ? 3 : 0);
+      if (d < distance) { distance = d; best = i; }
+    });
+    return best;
+  }
+
+  // A light that runs once round the ecliptic from the Sun, like the instrument chiming.
+  function drawPulse(lst, sunLon, now) {
+    if (!pulse) return;
+    const t = (now - pulse) / 1900;
+    if (t < 0) return;
+    if (t >= 1) { pulse = null; return; }
+    const head = sunLon + (1 - Math.pow(1 - t, 2.2)) * 360;
+    const fade = Math.min(1, t * 6) * Math.min(1, (1 - t) * 3);
+    for (let k = 0; k < 28; k += 1) {
+      const a = view(local(...eclipticToEquatorial(head - k * 2), lst));
+      const b = view(local(...eclipticToEquatorial(head - k * 2 - 2.2), lst));
+      const g = contexts[a.z < 0 ? 1 : 0];
+      const strength = (1 - k / 28) * fade * (a.z < 0 ? 1 : .45);
+      g.strokeStyle = '#ffe3ae';
+      g.globalAlpha = strength * .25;
+      g.lineWidth = 7;
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+      g.globalAlpha = strength;
+      g.lineWidth = 2.2;
+      g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
+    }
+  }
+  // A bump that rises and settles over a moment, for flaring beads.
+  const swell = (start, now, length) => {
+    const t = start === null ? 1 : (now - start) / length;
+    return t >= 0 && t < 1 ? Math.sin(t * Math.PI) : 0;
+  };
 
   const brass = { body: '#7a6443', shine: '#f0d9a2', width: 3.2, alpha: 1, scale: 1 };
   const fixed = { body: '#6a5a40', shine: '#d9c08a', width: 4.2, alpha: .95, scale: 1.1 };
@@ -215,7 +286,10 @@
     ticks(equator, 24, 1, 1.045, brass);
     const ecliptic = a => local(...eclipticToEquatorial(a), lst);
     const sunLon = sky.sunLongitude();
-    ring(circle(ecliptic), { ...slim, shine: '#f3c98a' });
+    // The ecliptic is also the time dial; it brightens under the hand.
+    const eclipticPoints = circle(ecliptic);
+    eclipticPath = eclipticPoints.map(p => view(p));
+    ring(eclipticPoints, eclipticHot || dial.days ? { ...slim, width: 2.6, alpha: 1, body: '#8a7148', shine: '#ffe2a8' } : { ...slim, shine: '#f3c98a' });
     ticks(ecliptic, 12, .965, 1.035, slim);
     zodiac(lst, sunLon);
 
@@ -231,10 +305,22 @@
     bead(north.map(v => v * 1.16), Math.max(2, radius * .02), '#b89a62', '#e8cf9866');
     bead(south.map(v => v * 1.16), Math.max(2, radius * .02), '#b89a62', '#e8cf9866');
 
+    const now = performance.now();
+    drawPulse(lst, sunLon, now);
+    if (flare !== null && now - flare > 1400) flare = null;
+
+    // The Moon's silver bead keeps within about five degrees of the ecliptic;
+    // its angle from the Sun's bead is the phase seen in the sky.
+    const moon = sky.moon();
+    const moonSize = Math.max(2.5, radius * .028) * (1 + swell(flare, now, 1400) * .7);
+    bead(local(moon.ra, moon.dec, lst), moonSize, '#aab6cc', '#dce6ff88', '#ffffff');
+
     // The Sun's bead rides the ecliptic at its real longitude.
     const [sunRa, sunDec] = eclipticToEquatorial(sunLon);
-    bead(local(sunRa, sunDec, lst), Math.max(3, radius * .035), '#f2b45c', '#ffcf8a88');
+    const sunSize = Math.max(3, radius * .035) * (1 + swell(pulse === null ? null : pulse + 1500, now, 900) * .6);
+    bead(local(sunRa, sunDec, lst), sunSize, '#f2b45c', '#ffcf8a88');
     contexts.forEach(g => { g.globalAlpha = 1; });
+    placeSignLabel();
   }
 
   function resize() {
@@ -284,45 +370,165 @@
   }, { passive: true });
   document.addEventListener('pointerleave', () => { lean.tx = lean.ty = 0; });
 
-  // Drag sideways to spin the instrument; it coasts and settles back into its slow turn.
-  // A short press stays a click, so the stars still open their notes.
+  // Two hands on one instrument. Dragging it sideways spins it on its turntable, with a
+  // little coasting. Dragging the ecliptic itself turns the date instead: once round the
+  // ring is a year, always at this hour, so the sky changes with the seasons. A flick
+  // coasts, and after a pause the sky returns to now.
+  const caption = document.querySelector('.binary-caption .eyebrow');
+  const captionText = caption?.textContent || '';
+  const dateFormat = (() => {
+    try { return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: sky.place.timeZone }); } catch { return null; }
+  })();
+  const daysPerPixel = () => 365.25 / (Math.PI * 2 * (radius || 100));
+  function syncCaption() {
+    if (!caption) return;
+    const whole = Math.round(dial.days);
+    caption.textContent = whole && dateFormat
+      ? `${dateFormat.format(sky.now()).toUpperCase()} · ${whole > 0 ? '+' : '−'}${Math.abs(whole)} ${Math.abs(whole) === 1 ? 'DAY' : 'DAYS'}`
+      : eclipticHot ? 'Drag the ecliptic to turn the date' : captionText;
+  }
+  function setDays(days) {
+    dial.days = days;
+    // Fractions of a day pass through too, so the sky glides rather than steps.
+    sky.setDial(days * 86400000);
+    syncCaption();
+    host.classList.toggle('is-dialled', days !== 0);
+  }
+  function dialTick(time) {
+    dial.frame = null;
+    const step = dial.previous === null ? 16 : Math.min(time - dial.previous, 80);
+    dial.previous = time;
+    if (drag?.mode !== 'dial') {
+      if (Math.abs(dial.push) > .00002) {
+        setDays(dial.days + dial.push * step);
+        dial.push *= Math.exp(-step / 700);
+        dial.holdUntil = time + 2200;
+      } else if (dial.days && time > dial.holdUntil) {
+        // Glide home: quick at first, gentle at the end.
+        // A small steady pull finishes the last few days instead of creeping.
+        const eased = dial.days * Math.exp(-step / 420);
+        const next = eased - Math.sign(eased) * Math.min(Math.abs(eased), step * .006);
+        setDays(Math.abs(next) < .01 ? 0 : next);
+      }
+    }
+    if (frame === null) draw();
+    if (drag?.mode === 'dial' || dial.days || Math.abs(dial.push) > .00002) dial.frame = requestAnimationFrame(dialTick);
+    else dial.previous = null;
+  }
+  function runDial() {
+    if (dial.frame === null) dial.frame = requestAnimationFrame(dialTick);
+  }
+
+  // How far a point is from the ecliptic as drawn, in pixels.
+  function nearEcliptic(x, y, reach) {
+    for (let i = 1; i < eclipticPath.length; i += 1) {
+      const a = eclipticPath[i - 1], b = eclipticPath[i];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+      if (Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy)) < reach) return true;
+    }
+    return false;
+  }
+  function setHot(hot) {
+    if (hot === eclipticHot) return;
+    eclipticHot = hot;
+    host.classList.toggle('is-over-ecliptic', hot);
+    syncCaption();
+    if (frame === null) draw();
+  }
+
   host.addEventListener('pointerdown', event => {
     if (event.button !== 0) return;
-    drag = { id: event.pointerId, x: event.clientX, last: event.clientX, time: event.timeStamp, moved: false };
-    push = 0;
+    const bounds = host.getBoundingClientRect();
+    const onRing = !event.target.closest('button') && nearEcliptic(event.clientX - bounds.left, event.clientY - bounds.top, event.pointerType === 'mouse' ? 9 : 16);
+    drag = { mode: onRing ? 'dial' : 'spin', id: event.pointerId, x: event.clientX, last: event.clientX, time: event.timeStamp, moved: false };
+    if (onRing) { dial.push = 0; window.clearTimeout(dial.reset); setHot(true); } else push = 0;
   });
   host.addEventListener('pointermove', event => {
-    if (!drag || event.pointerId !== drag.id) return;
+    const bounds = host.getBoundingClientRect();
+    if (!drag || event.pointerId !== drag.id) {
+      if (event.pointerType === 'mouse') {
+        // Pointing at a sign names it; pointing at the ecliptic offers the dial.
+        const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+        const sign = signAt(x, y);
+        if (sign !== pointedSign) { pointedSign = sign; placeSignLabel(); }
+        setHot(!event.target.closest('button') && nearEcliptic(x, y, 9));
+      }
+      return;
+    }
     if (!drag.moved && Math.abs(event.clientX - drag.x) < 6) return;
     if (!drag.moved) {
       drag.moved = true;
       try { host.setPointerCapture(event.pointerId); } catch { /* The pointer already left; the drag still works. */ }
       host.classList.add('is-turning');
+      pointedSign = tappedSign = null;
     }
-    // Yaw turns the near side to the right, so the rings follow the hand.
-    const turn = (event.clientX - drag.last) / (radius || 1);
+    const dx = event.clientX - drag.last;
     const elapsed = Math.max(8, event.timeStamp - drag.time);
-    spin += turn;
-    push = push * .5 + turn / elapsed * .5;
+    if (drag.mode === 'dial') {
+      const days = dx * daysPerPixel();
+      setDays(dial.days + days);
+      dial.push = dial.push * .5 + days / elapsed * .5;
+      runDial();
+    } else {
+      // Yaw turns the near side to the right, so the rings follow the hand.
+      const turn = dx / (radius || 1);
+      spin += turn;
+      push = push * .5 + turn / elapsed * .5;
+      if (frame === null) draw();
+    }
     drag.last = event.clientX;
     drag.time = event.timeStamp;
-    if (frame === null) draw();
+  });
+  host.addEventListener('pointerleave', event => {
+    if (event.pointerType !== 'mouse' || drag) return;
+    setHot(false);
+    if (pointedSign !== null) { pointedSign = null; placeSignLabel(); }
   });
   const release = event => {
-    if (!drag || event.pointerId !== drag.id) return;
-    // A hand that stopped before letting go leaves the instrument where it is.
-    if (event.timeStamp - drag.time > 120) push = 0;
-    push = Math.max(-.006, Math.min(.006, still() ? 0 : push));
-    if (drag.moved) {
+    const hand = drag;
+    if (!hand || event.pointerId !== hand.id) return;
+    drag = null;
+    if (event.pointerType !== 'mouse') setHot(false);
+    if (hand.moved) {
       host.classList.remove('is-turning');
+      // A hand that stopped before letting go leaves things where they are.
+      const resting = event.timeStamp - hand.time > 120;
+      if (hand.mode === 'dial') {
+        dial.push = resting || still() ? 0 : Math.max(-.5, Math.min(.5, dial.push));
+        dial.holdUntil = performance.now() + 2200;
+        // Without motion there is no coasting or gliding: the sky simply comes back.
+        if (still()) dial.reset = window.setTimeout(() => setDays(0), 3500);
+        else runDial();
+      } else {
+        push = resting || still() ? 0 : Math.max(-.006, Math.min(.006, push));
+      }
       window.addEventListener('click', swallow, { capture: true, once: true });
       window.setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+      return;
     }
-    drag = null;
+    if (hand.mode === 'dial') runDial();
+    // A tap on a sign names it for a few seconds.
+    const bounds = host.getBoundingClientRect();
+    const sign = signAt(event.clientX - bounds.left, event.clientY - bounds.top);
+    if (sign !== null && event.pointerType !== 'mouse') {
+      tappedSign = sign;
+      placeSignLabel();
+      window.clearTimeout(tapTimer);
+      tapTimer = window.setTimeout(() => { tappedSign = null; placeSignLabel(); }, 3200);
+    }
   };
   const swallow = event => { event.stopPropagation(); event.preventDefault(); };
   host.addEventListener('pointerup', release);
   host.addEventListener('pointercancel', release);
+
+  // After a story from the sky is read, the instrument chimes; touching the moon lights its bead.
+  const story = document.querySelector('.lab-story');
+  story?.addEventListener('close', () => {
+    if (still() || !['meteor', 'atlas'].includes(story.dataset.kind)) return;
+    pulse = performance.now() + 250;
+  });
+  document.addEventListener('lab:moon-touched', () => { if (!still()) flare = performance.now(); });
 
   new ResizeObserver(resize).observe(host);
   if ('IntersectionObserver' in window) {
