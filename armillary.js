@@ -16,7 +16,8 @@
   const tilt = 23.44 * rad;
   const lat = sky.place.lat * rad;
   // Look the same way as the sky behind it (sky-place.js decides which).
-  const facingAz = (sky.facing ?? 0) * rad;
+  // Read afresh on every frame, so the instrument swings round with the sky.
+  let facingAz = (sky.facing ?? 0) * rad;
   const toggle = document.getElementById('motion-toggle');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
@@ -275,6 +276,7 @@
   function draw() {
     contexts.forEach(g => g.clearRect(0, 0, width, height));
     if (!radius) return;
+    facingAz = (sky.facing ?? 0) * rad;
     const lst = sky.sidereal();
 
     // Fixed to the observer: the horizon and the meridian.
@@ -310,6 +312,13 @@
     const now = performance.now();
     drawPulse(lst, sunLon, now);
     if (flare !== null && now - flare > 1400) flare = null;
+
+    // The planets ride close to the ecliptic too, as small beads in their own colours;
+    // turning the date shows them wander, and now and then loop backwards.
+    for (const planet of sky.planets?.() || []) {
+      const size = Math.max(1.6, radius * (planet.mag < -3 ? .021 : .016));
+      bead(local(planet.ra, planet.dec, lst), size, planet.color, `${planet.color}55`, '#ffffff');
+    }
 
     // The Moon's silver bead keeps within about five degrees of the ecliptic;
     // its angle from the Sun's bead is the phase seen in the sky.
@@ -530,6 +539,8 @@
     if (still() || !['meteor', 'atlas'].includes(story.dataset.kind)) return;
     pulse = performance.now() + 250;
   });
+  // A still instrument still turns with the sky, at once.
+  document.addEventListener('lab:sky-turn', () => { if (frame === null) requestAnimationFrame(draw); });
   document.addEventListener('lab:moon-touched', () => { if (!still()) flare = performance.now(); });
 
   new ResizeObserver(resize).observe(host);

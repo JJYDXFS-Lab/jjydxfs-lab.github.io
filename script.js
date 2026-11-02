@@ -4,13 +4,17 @@
   // The sky above one fixed place (set in sky-place.js), at the visitor's current moment.
   const SKY_PLACE = window.LAB_SKY_PLACE || { name: "Greenwich", lat: 51.4769, lon: -0.0005, timeZone: "Europe/London" };
   // The azimuth the view faces (0 is north, 90 east), from the place's `look` setting.
-  const facing = (() => {
+  // Visitors can turn around to the opposite side; the view then swings smoothly across.
+  const homeFacing = (() => {
     const look = SKY_PLACE.look ?? "pole";
     const pole = SKY_PLACE.lat < 0 ? 180 : 0;
     const named = { pole, equator: (pole + 180) % 360, north: 0, east: 90, south: 180, west: 270 };
     if (look in named) return named[look];
     return Number.isFinite(Number(look)) ? ((Number(look) % 360) + 360) % 360 : pole;
   })();
+  let facing = homeFacing;
+  let facingTarget = homeFacing;
+  const turning = () => Math.abs(((facingTarget - facing + 540) % 360) - 180) > .01;
   // Preview another moment with ?sky-time=2026-10-30T02:00:00+11:00; the sky then runs on from there.
   const skyOffset = (() => {
     const requested = Date.parse(new URLSearchParams(location.search).get("sky-time") || "");
@@ -27,11 +31,23 @@
   // A small clock for other pieces of the sky, such as the armillary sphere.
   window.LAB_SKY = Object.freeze({
     place: SKY_PLACE,
-    facing,
+    get facing() { return facing; },
+    turn() {
+      facingTarget = (facingTarget + 180) % 360;
+      syncLookButton();
+      // A still sky turns at once; a running one swings round over the next second or so.
+      if (!running) {
+        facing = facingTarget;
+        milkyWayAt = -Infinity;
+        draw();
+      }
+      document.dispatchEvent(new CustomEvent("lab:sky-turn", { detail: { facing: facingTarget } }));
+    },
     now: skyNow,
     sidereal: () => siderealDegrees(skyNow()),
     sunLongitude: () => sunEquatorial(ephemeris(skyNow())).lon,
     moon: () => moonEquatorial(ephemeris(skyNow())),
+    planets: () => planetPositions(ephemeris(skyNow())),
     dial: () => dialOffset + dialFraction * 86400000,
     setDial(ms) {
       const days = Number.isFinite(ms) ? ms / 86400000 : 0;
@@ -51,6 +67,18 @@
   const label = document.getElementById("motion-label");
   const skyLabel = document.getElementById("sky-place");
   const zenithLabel = document.getElementById("sky-zenith");
+  const lookButton = document.querySelector(".look-toggle");
+  const compass = ["north", "east", "south", "west"];
+  function syncLookButton() {
+    if (!lookButton) return;
+    const toward = compass[Math.round(((facingTarget + 180) % 360) / 90) % 4];
+    const now = compass[Math.round(facingTarget / 90) % 4];
+    // The needle points the way the sky faces; a click turns it round.
+    lookButton.style.setProperty("--needle", `${facingTarget}deg`);
+    lookButton.setAttribute("aria-label", `Facing ${now}. Turn the sky to face ${toward}`);
+    lookButton.title = `Facing ${now} · turn to the ${toward}`;
+    lookButton.hidden = false;
+  }
   const data = window.LAB_SKY_DATA;
   const motionPreference = window.matchMedia("(prefers-reduced-motion: reduce)");
   const pointerPreference = window.matchMedia("(min-width: 801px) and (hover: hover) and (pointer: fine)");
@@ -83,6 +111,7 @@
   let milkyWayAt = -Infinity;
   let sun = { alt: -30, x: 0 };
   let moon = null;
+  let planets = [];
   let moonShine = 0;
   let moonPinnedUntil = -Infinity;
   const pointer = { x: 0, y: 0, active: false };
@@ -112,6 +141,8 @@
   });
 
   if (!canvas || !data) return;
+  lookButton?.addEventListener("click", () => window.LAB_SKY.turn());
+  syncLookButton();
   try {
     context = canvas.getContext("2d", { alpha: true });
   } catch {
@@ -158,6 +189,62 @@
     const dec = Math.asin(Math.sin(lat) * Math.cos(tilt) + Math.cos(lat) * Math.sin(tilt) * Math.sin(lon));
     return { lon: lon / rad, lat: lat / rad, ra: (ra / rad + 360) % 360, dec: dec / rad };
   }
+  // Naked-eye planets from JPL's approximate Keplerian elements (Standish, valid 1800–2050):
+  // a (au), e, I, L, longitude of perihelion, node (degrees), each with its rate per century.
+  const planetElements = {
+    earth: [1.00000261, .00000562, .01671123, -.00004392, -.00001531, -.01294668, 100.46457166, 35999.37244981, 102.93768193, .32327364, 0, 0],
+    mercury: [.38709927, .00000037, .20563593, .00001906, 7.00497902, -.00594749, 252.2503235, 149472.67411175, 77.45779628, .16047689, 48.33076593, -.12534081],
+    venus: [.72333566, .0000039, .00677672, -.00004107, 3.39467605, -.0007889, 181.9790995, 58517.81538729, 131.60246718, .00268329, 76.67984255, -.27769418],
+    mars: [1.52371034, .00001847, .0933941, .00007882, 1.84969142, -.00813131, -4.55343205, 19140.30268499, -23.94362959, .44441088, 49.55953891, -.29257343],
+    jupiter: [5.202887, -.00011607, .04838624, -.00013253, 1.30439695, -.00183714, 34.39644051, 3034.74612775, 14.72847983, .21252668, 100.47390909, .20469106],
+    saturn: [9.53667594, -.0012506, .05386179, -.00050991, 2.48599187, .00193609, 49.95424423, 1222.49362201, 92.59887831, -.41897216, 113.66242448, -.28867794]
+  };
+  // Name, 中文, colour, and the magnitude law: absolute magnitude plus phase-angle terms.
+  const planetLooks = [
+    ["mercury", "Mercury", "水星", "#e2d3b8", i => -.42 + .038 * i - .000273 * i * i + .000002 * i ** 3],
+    ["venus", "Venus", "金星", "#fff7e6", i => -4.4 + .0009 * i + .000239 * i * i - .00000065 * i ** 3],
+    ["mars", "Mars", "火星", "#ffa47a", i => -1.52 + .016 * i],
+    ["jupiter", "Jupiter", "木星", "#f6e8cf", i => -9.4 + .005 * i],
+    // Saturn's rings add a little light on average; the law alone leaves it too faint.
+    ["saturn", "Saturn", "土星", "#efdcab", i => -9.15 + .044 * i]
+  ];
+  // Heliocentric position in ecliptic coordinates (J2000), in au.
+  function heliocentric(name, date) {
+    const t = (date.getTime() / 86400000 - 10957.5) / 36525;
+    const el = planetElements[name];
+    const at = k => el[k * 2] + el[k * 2 + 1] * t;
+    const a = at(0), e = at(1), inc = at(2) * rad, longitude = at(3), perihelion = at(4), node = at(5) * rad;
+    const anomaly = ((((longitude - perihelion) % 360) + 540) % 360 - 180) * rad;
+    let E = anomaly + e * Math.sin(anomaly);
+    for (let i = 0; i < 6; i += 1) E -= (E - e * Math.sin(E) - anomaly) / (1 - e * Math.cos(E));
+    const px = a * (Math.cos(E) - e), py = a * Math.sqrt(1 - e * e) * Math.sin(E);
+    const w = perihelion * rad - node;
+    const cw = Math.cos(w), sw = Math.sin(w), cn = Math.cos(node), sn = Math.sin(node), ci = Math.cos(inc), si = Math.sin(inc);
+    return [
+      (cw * cn - sw * sn * ci) * px + (-sw * cn - cw * sn * ci) * py,
+      (cw * sn + sw * cn * ci) * px + (-sw * sn + cw * cn * ci) * py,
+      sw * si * px + cw * si * py
+    ];
+  }
+  function planetPositions(date) {
+    const earth = heliocentric("earth", date);
+    const tilt = 23.43928 * rad;
+    return planetLooks.map(([key, en, zh, color, law]) => {
+      const sunward = heliocentric(key, date);
+      const g = sunward.map((v, i) => v - earth[i]);
+      const distance = Math.hypot(...g), fromSun = Math.hypot(...sunward), earthSun = Math.hypot(...earth);
+      const phase = Math.acos(Math.max(-1, Math.min(1, (fromSun ** 2 + distance ** 2 - earthSun ** 2) / (2 * fromSun * distance)))) / rad;
+      const y = g[1] * Math.cos(tilt) - g[2] * Math.sin(tilt), z = g[1] * Math.sin(tilt) + g[2] * Math.cos(tilt);
+      return {
+        key, en, zh, color,
+        ra: (Math.atan2(y, g[0]) / rad + 360) % 360,
+        dec: Math.asin(z / distance) / rad,
+        lon: (Math.atan2(g[1], g[0]) / rad + 360) % 360,
+        mag: law(phase) + 5 * Math.log10(fromSun * distance)
+      };
+    });
+  }
+
   const moonPhases = [
     [11.25, "New moon", "新月"], [78.75, "Waxing crescent", "蛾眉月"], [101.25, "First quarter", "上弦月"],
     [168.75, "Waxing gibbous", "盈凸月"], [191.25, "Full moon", "满月"], [258.75, "Waning gibbous", "亏凸月"],
@@ -324,6 +411,12 @@
       const p = project(h.alt, h.az);
       name.alt = h.alt; name.x = p.x; name.y = p.y;
     }
+    // Planets keep their hover glow between frames.
+    const glowOf = new Map(planets.map(p => [p.key, p.shine]));
+    planets = planetPositions(ephemeris(date)).map(p => {
+      const h = horizontal(p.ra, p.dec, lst);
+      return { ...p, ...project(h.alt, h.az), alt: h.alt, shine: glowOf.get(p.key) || 0 };
+    });
     const s = sunEquatorial(ephemeris(date));
     const sh = horizontal(s.ra, s.dec, lst);
     sun = { alt: sh.alt, x: project(sh.alt, sh.az).x };
@@ -459,8 +552,8 @@
   function draw(step = 0) {
     const now = skyNow();
     placeAll(now);
-    if (dialOffset || dialFraction) {
-      // While the dial turns, a small, quick Milky Way follows every frame; the tint and
+    if (dialOffset || dialFraction || turning()) {
+      // While the dial turns or the view swings round, a small, quick Milky Way follows every frame; the tint and
       // labels, which repaint the whole page, follow ten times a second.
       paintMilkyWay(now, true);
       milkyWayAt = -Infinity;
@@ -643,11 +736,46 @@
       context.arc(x, y, star.radius + star.excitement * .55, 0, Math.PI * 2);
       context.fill();
     }
+    drawPlanets(step, daylight);
     drawMoon(step);
     drawMeteor();
     drawBurst();
     context.globalAlpha = 1;
     frameCount += 1;
+  }
+
+  // Planets shine steadily, without twinkling, and name themselves when the pointer comes near.
+  function drawPlanets(step, daylight) {
+    for (const planet of planets) {
+      if (planet.alt < -1) continue;
+      const x = planet.x + parallax.x * .3, y = planet.y + parallax.y * .3;
+      if (x < -20 || x > width + 20 || y < -20 || y > height + 20) continue;
+      const target = pointer.active ? Math.max(0, 1 - Math.hypot(x - pointer.x, y - pointer.y) / 90) : 0;
+      planet.shine += (target - planet.shine) * (1 - Math.exp(-step / (target > planet.shine ? 250 : 900)));
+      const r = Math.max(1.2, 2.2 - planet.mag * .3);
+      // The brightest planets outlast the stars into twilight and the bright sky.
+      const daylightFade = 1 - daylight * Math.min(1, Math.max(0, (planet.mag + 4.5) / 6)) * .7;
+      const alpha = Math.min(1, (.9 + planet.shine * .1) * Math.min(1, (planet.alt + 1) / 6) * daylightFade * (x < width * .55 ? .8 : 1));
+      if (alpha <= .01) continue;
+      const halo = context.createRadialGradient(x, y, 0, x, y, r * 6);
+      halo.addColorStop(0, planet.color);
+      halo.addColorStop(1, "transparent");
+      context.globalAlpha = alpha * (.18 + Math.max(0, -planet.mag) * .05 + planet.shine * .15);
+      context.fillStyle = halo;
+      context.fillRect(x - r * 6, y - r * 6, r * 12, r * 12);
+      context.globalAlpha = alpha;
+      context.fillStyle = planet.color;
+      context.beginPath();
+      context.arc(x, y, r + planet.shine * .5, 0, Math.PI * 2);
+      context.fill();
+      if (planet.shine > .15) {
+        context.globalAlpha = Math.min(1, (planet.shine - .15) * 1.6) * .85 * Math.min(1, (planet.alt + 1) / 6);
+        context.font = '11px "SFMono-Regular", Consolas, monospace';
+        context.textAlign = "center";
+        context.fillStyle = "#d3dcec";
+        context.fillText(`${planet.en.toUpperCase()} · ${planet.zh}`, x, y - r - 10);
+      }
+    }
   }
 
   function moonWash(mag) {
@@ -825,8 +953,8 @@
     if (!running) return;
     if (previousTime === null) previousTime = timestamp;
     const elapsed = timestamp - previousTime;
-    // The sky keeps pace with the armillary while its dial turns.
-    const interval = dialOffset || dialFraction ? 1000 / 60 : frameInterval;
+    // The sky keeps pace with the armillary while its dial turns, and while the view swings round.
+    const interval = dialOffset || dialFraction || turning() ? 1000 / 60 : frameInterval;
     if (elapsed >= interval) {
       const step = Math.min(80, Math.floor(elapsed / interval) * interval);
       previousTime = timestamp - elapsed % interval;
@@ -834,6 +962,13 @@
       const smoothing = 1 - Math.exp(-step / 650);
       parallax.x += (target.x - parallax.x) * smoothing;
       parallax.y += (target.y - parallax.y) * smoothing;
+      if (turning()) {
+        const left = ((facingTarget - facing + 540) % 360) - 180;
+        const move = left * (1 - Math.exp(-step / 380));
+        facing = (facing + (Math.abs(left) < .3 ? left : Math.sign(left) * Math.max(Math.abs(move), .25)) + 360) % 360;
+        // Arrived: paint the Milky Way at full quality again.
+        if (!turning()) milkyWayAt = -Infinity;
+      }
       draw(step);
     }
     requestId = window.requestAnimationFrame(tick);

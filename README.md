@@ -15,7 +15,7 @@ The site is plain HTML, CSS, and JavaScript and requires no build step.
 
 ## The sky
 
-The background is the real night sky above one place, computed for the visitor's current moment: naked-eye stars, the Milky Way with its bright core and dark rifts, nebulae and galaxies that name themselves, constellations that name themselves and show their figures near the cursor, and a sky that warms at twilight. A few small games live in it too.
+The background is the real night sky above one place, computed for the visitor's current moment: naked-eye stars, the Milky Way with its bright core and dark rifts, nebulae and galaxies that name themselves, the five naked-eye planets, constellations that name themselves and show their figures near the cursor, and a sky that warms at twilight. A few small games live in it too.
 
 The brass armillary sphere beside the two stars can be spun by hand, and its ecliptic ring doubles as a time dial: drag along the ring to move the whole sky to another date at the same hour, and it drifts back to now when released.
 
@@ -31,7 +31,7 @@ window.LAB_SKY_PLACE = {
 };
 ```
 
-`look: "pole"` faces the celestial pole you can see (south from Canberra, where the Southern Cross and the Magellanic Clouds never set). `"equator"` faces the other way, and `"north"`, `"east"`, `"south"`, `"west"` or an azimuth in degrees choose a direction outright.
+`look: "pole"` faces the celestial pole you can see (south from Canberra, where the Southern Cross and the Magellanic Clouds never set). `"equator"` faces the other way (toward the planets and the zodiac), and `"north"`, `"east"`, `"south"`, `"west"` or an azimuth in degrees choose a direction outright. Visitors can turn the sky round with the small N–S compass at the end of the zenith line.
 
 Star, constellation and name data in [`sky-data.js`](sky-data.js) is derived from [d3-celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, used under the BSD 3-Clause licence.
 
