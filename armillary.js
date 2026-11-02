@@ -15,8 +15,8 @@
   const rad = Math.PI / 180;
   const tilt = 23.44 * rad;
   const lat = sky.place.lat * rad;
-  // Look toward the celestial equator, as the sky does: north from the south, south from the north.
-  const facing = sky.place.lat < 0 ? 1 : -1;
+  // Look the same way as the sky behind it (sky-place.js decides which).
+  const facingAz = (sky.facing ?? 0) * rad;
   const toggle = document.getElementById('motion-toggle');
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
   const fine = window.matchMedia('(hover: hover) and (pointer: fine)');
@@ -47,7 +47,9 @@
 
   // Local vector to screen, with depth (negative is nearer the viewer).
   function view([east, north, up], scale = 1) {
-    const x = east * facing, z = north * facing;
+    // Right of the screen and away from the viewer, for a viewer facing that azimuth.
+    const x = east * Math.cos(facingAz) - north * Math.sin(facingAz);
+    const z = east * Math.sin(facingAz) + north * Math.cos(facingAz);
     const yaw = spin + lean.x, pitch = 16 * rad + lean.y;
     const x1 = x * Math.cos(yaw) - z * Math.sin(yaw);
     const z1 = x * Math.sin(yaw) + z * Math.cos(yaw);

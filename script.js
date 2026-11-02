@@ -3,6 +3,14 @@
 
   // The sky above one fixed place (set in sky-place.js), at the visitor's current moment.
   const SKY_PLACE = window.LAB_SKY_PLACE || { name: "Greenwich", lat: 51.4769, lon: -0.0005, timeZone: "Europe/London" };
+  // The azimuth the view faces (0 is north, 90 east), from the place's `look` setting.
+  const facing = (() => {
+    const look = SKY_PLACE.look ?? "pole";
+    const pole = SKY_PLACE.lat < 0 ? 180 : 0;
+    const named = { pole, equator: (pole + 180) % 360, north: 0, east: 90, south: 180, west: 270 };
+    if (look in named) return named[look];
+    return Number.isFinite(Number(look)) ? ((Number(look) % 360) + 360) % 360 : pole;
+  })();
   // Preview another moment with ?sky-time=2026-10-30T02:00:00+11:00; the sky then runs on from there.
   const skyOffset = (() => {
     const requested = Date.parse(new URLSearchParams(location.search).get("sky-time") || "");
@@ -19,6 +27,7 @@
   // A small clock for other pieces of the sky, such as the armillary sphere.
   window.LAB_SKY = Object.freeze({
     place: SKY_PLACE,
+    facing,
     now: skyNow,
     sidereal: () => siderealDegrees(skyNow()),
     sunLongitude: () => sunEquatorial(ephemeris(skyNow())).lon,
@@ -166,7 +175,6 @@
   }
 
   // Face the celestial equator: south from the north, north from the south.
-  const facing = SKY_PLACE.lat >= 0 ? 180 : 0;
   const altitudeSpan = 76;
   const altitudeFloor = -3;
   function project(alt, az) {
@@ -186,6 +194,84 @@
     if (bv < 1.3) return "#f2d9b0";
     return "#efc29a";
   }
+  // Naked-eye nebulae, clusters and galaxies at their real places:
+  // [English, 中文, RA°, Dec°, length°, width°, position angle°, brightness, colour].
+  const deepSky = [
+    ["Orion Nebula", "猎户座大星云", 83.82, -5.39, 1.1, .8, 0, .9, "#ddd6f0"],
+    ["Lagoon Nebula", "礁湖星云", 270.92, -24.38, 1.5, .6, 90, .75, "#e6d6e6"],
+    ["Trifid Nebula", "三叶星云", 270.6, -23.03, .5, .5, 0, .3, "#e2d8ec"],
+    ["Carina Nebula", "船底座星云", 161.27, -59.87, 2, 1.6, 0, .9, "#e6d6e6"],
+    ["Andromeda Galaxy", "仙女座星系", 10.68, 41.27, 3.2, 1, 35, .8, "#ece4d4"],
+    ["Large Magellanic Cloud", "大麦哲伦云", 80.89, -69.76, 9, 5, 170, 1.9, "#e4e7f2"],
+    ["Small Magellanic Cloud", "小麦哲伦云", 13.19, -72.83, 4.5, 2.6, 45, 1.5, "#e4e7f2"],
+    ["Omega Centauri", "半人马座 ω 星团", 201.7, -47.48, .8, .8, 0, .5, "#efe6d2"],
+    ["Beehive Cluster", "鬼星团", 130.1, 19.67, 1.2, 1.2, 0, .4, "#e3e8f4"],
+    ["Ptolemy Cluster", "托勒密星团", 268.47, -34.79, 1.3, 1.3, 0, .4, "#e3e8f4"]
+  ].map(([en, zh, ra, dec, major, minor, angle, bright, color]) => ({ en, zh, ra, dec, major, minor, angle, bright, color, shine: 0 }));
+
+  // Constellation figures (sky-figures.js) load the first time their constellation lights up,
+  // then are tinted to the sky's silver once and kept.
+  const figureData = window.LAB_SKY_FIGURES;
+  const figures = new Map();
+  function figureFor(id) {
+    const key = figureData && (figureData.figures[id] ? id : figureData.alias[id]);
+    const spec = key && figureData.figures[key];
+    if (!spec) return null;
+    let figure = figures.get(key);
+    if (!figure) {
+      figure = { spec, canvas: null };
+      figures.set(key, figure);
+      const image = new Image();
+      image.decoding = "async";
+      image.onload = () => {
+        const [w, h] = spec.size;
+        const tinted = document.createElement("canvas");
+        tinted.width = w;
+        tinted.height = h;
+        const paint = tinted.getContext("2d");
+        paint.drawImage(image, 0, 0, w, h);
+        // Redraw the painting as a sketch in light: its edges bright, its body only a faint wash,
+        // in silver. Brightness becomes transparency, because the starfield canvas is itself
+        // transparent over the CSS sky: an opaque black would darken the sky behind it.
+        const pixels = paint.getImageData(0, 0, w, h);
+        const source = pixels.data;
+        const lum = new Float32Array(w * h);
+        for (let i = 0; i < lum.length; i += 1) lum[i] = source[i * 4] / 255;
+        const tint = [201, 214, 236];
+        for (let y = 0; y < h; y += 1) {
+          for (let x = 0; x < w; x += 1) {
+            const i = y * w + x;
+            const at = (dx, dy) => lum[Math.min(h - 1, Math.max(0, y + dy)) * w + Math.min(w - 1, Math.max(0, x + dx))];
+            const gx = at(1, -1) + 2 * at(1, 0) + at(1, 1) - at(-1, -1) - 2 * at(-1, 0) - at(-1, 1);
+            const gy = at(-1, 1) + 2 * at(0, 1) + at(1, 1) - at(-1, -1) - 2 * at(0, -1) - at(1, -1);
+            // Fade out near the border, where some paintings are cut off by the frame.
+            const border = Math.min(1, Math.min(x, y, w - 1 - x, h - 1 - y) / (w * .08));
+            const light = Math.min(1, lum[i] * .3 + Math.hypot(gx, gy) * .9) * border;
+            source[i * 4] = tint[0];
+            source[i * 4 + 1] = tint[1];
+            source[i * 4 + 2] = tint[2];
+            source[i * 4 + 3] = 255 * light;
+          }
+        }
+        paint.putImageData(pixels, 0, 0);
+        figure.canvas = tinted;
+      };
+      image.src = figureData.base + spec.file;
+    }
+    return figure;
+  }
+  // The affine map that carries three image points onto three screen points.
+  function pinFigure(anchors, screen) {
+    const [p0, p1, p2] = anchors, [q0, q1, q2] = screen;
+    const ux = p1[0] - p0[0], uy = p1[1] - p0[1], wx = p2[0] - p0[0], wy = p2[1] - p0[1];
+    const vx = q1.x - q0.x, vy = q1.y - q0.y, tx = q2.x - q0.x, ty = q2.y - q0.y;
+    const det = ux * wy - wx * uy;
+    if (!det) return null;
+    const a = (vx * wy - tx * uy) / det, c = (tx * ux - vx * wx) / det;
+    const b = (vy * wy - ty * uy) / det, d = (ty * ux - vy * wx) / det;
+    return [a, b, c, d, q0.x - a * p0[0] - c * p0[1], q0.y - b * p0[0] - d * p0[1]];
+  }
+
   function prepare() {
     const random = seeded(7);
     for (let i = 0; i < data.stars.length; i += 4) {
@@ -280,11 +366,11 @@
     paint.lineJoin = "round";
     const scale = height / altitudeSpan;
     // Continuous runs along the galactic plane; one stroke per run avoids banding at the joins.
-    function runs(from, to) {
+    function runs(from, to, b = 0) {
       const result = [];
       let run = [];
       for (let l = from; l <= to; l += 2) {
-        const e = galacticToEquatorial((l + 360) % 360, 0);
+        const e = galacticToEquatorial((l + 360) % 360, b);
         const h = horizontal(e.ra, e.dec, lst);
         const p = project(h.alt, h.az);
         const last = run[run.length - 1];
@@ -312,8 +398,21 @@
       }
     }
     if ("filter" in paint) paint.filter = `blur(${Math.max(6, scale * 2.2)}px)`;
+    // The whole band, cool and faint, brightening and warming toward the galaxy's centre
+    // in Sagittarius, where a thick bulge swells around the core.
     stroke(runs(0, 360), [[22, .03], [13, .036], [6, .04]], "#b7c6e8");
-    stroke(runs(-55, 55), [[16, .04], [8, .05]], "#d9cfe6");
+    stroke(runs(-90, 90), [[16, .025]], "#c6cde6");
+    stroke(runs(-55, 55), [[14, .035], [8, .045]], "#d6d1e6");
+    stroke(runs(-28, 28), [[12, .045], [6, .05]], "#e4dccd");
+    stroke(runs(-12, 12), [[24, .045], [14, .05]], "#ecdfc6");
+    // Dust carved back out: the Great Rift from Cygnus to Sagittarius, the dark lanes
+    // beside the core, and the Coalsack by the Southern Cross.
+    paint.globalCompositeOperation = "destination-out";
+    stroke(runs(8, 82, 1.2), [[4.5, .45], [2.4, .35]], "#000");
+    stroke(runs(-6, 8, 3.5), [[3, .4]], "#000");
+    stroke(runs(-14, -4, -2.5), [[2.5, .3]], "#000");
+    stroke(runs(298, 304, -1), [[6, .5]], "#000");
+    paint.globalCompositeOperation = "source-over";
     if ("filter" in paint) paint.filter = "none";
     paint.fillStyle = "#e6ecfa";
     for (const mote of dust) {
@@ -404,6 +503,85 @@
       const d = Math.hypot((x - instrument.left - instrument.width / 2) / rx, (y - instrument.top - instrument.height / 2) / ry);
       return Math.min(1, Math.max(.08, (d - .55) / .45));
     };
+    const lstNow = siderealDegrees(now);
+    const perDegree = height / altitudeSpan;
+    // Nebulae and galaxies: soft glows, a little larger than the eye would see them,
+    // that brighten and name themselves when the pointer comes near.
+    context.font = '11px "SFMono-Regular", Consolas, monospace';
+    context.textAlign = "center";
+    for (const object of deepSky) {
+      const h = horizontal(object.ra, object.dec, lstNow);
+      if (h.alt < -3) continue;
+      const p = project(h.alt, h.az);
+      const x = p.x + parallax.x * .3, y = p.y + parallax.y * .3;
+      // Small objects are drawn larger than life so they read as glows; large ones at true size.
+      const grow = object.major > 3 ? .8 : 1.6;
+      const major = object.major * perDegree * grow + 7, minor = object.minor * perDegree * grow + 5;
+      if (x < -major || x > width + major || y < -major || y > height + major) continue;
+      // North and east on screen, to lay the glow along its real angle on the sky.
+      const nh = horizontal(object.ra, object.dec + .5, lstNow), np = project(nh.alt, nh.az);
+      const eh = horizontal(object.ra + .5 / Math.max(.1, Math.cos(object.dec * rad)), object.dec, lstNow), ep = project(eh.alt, eh.az);
+      const angle = Math.abs(np.x - p.x) > width / 2 || Math.abs(ep.x - p.x) > width / 2 ? 0
+        : Math.atan2((np.y - p.y) * Math.cos(object.angle * rad) + (ep.y - p.y) * Math.sin(object.angle * rad),
+          (np.x - p.x) * Math.cos(object.angle * rad) + (ep.x - p.x) * Math.sin(object.angle * rad));
+      const target = pointer.active ? Math.max(0, 1 - Math.hypot(x - pointer.x, y - pointer.y) / 110) : 0;
+      object.shine += (target - object.shine) * (1 - Math.exp(-step / (target > object.shine ? 300 : 1000)));
+      const placeFade = Math.min(1, (h.alt + 3) / 9) * quiet(x, y) * (x < width * .55 ? .5 : 1);
+      const glowAlpha = object.bright * .2 * (1 + object.shine * .9) * placeFade * (1 - daylight * .85) * moonWash(4);
+      if (glowAlpha < .005) continue;
+      context.save();
+      context.translate(x, y);
+      context.rotate(angle);
+      context.scale(major, minor);
+      const glowFill = context.createRadialGradient(0, 0, 0, 0, 0, 1);
+      glowFill.addColorStop(0, object.color);
+      glowFill.addColorStop(.3, object.color + "88");
+      glowFill.addColorStop(1, object.color + "00");
+      context.globalAlpha = glowAlpha;
+      context.fillStyle = glowFill;
+      context.beginPath();
+      context.arc(0, 0, 1, 0, Math.PI * 2);
+      context.fill();
+      context.restore();
+      if (object.shine > .15) {
+        // Names stay readable by day, like the constellations'.
+        context.globalAlpha = Math.min(1, (object.shine - .15) * 1.6) * .8 * placeFade;
+        context.fillStyle = "#d3dcec";
+        context.fillText(`${object.en.toUpperCase()} · ${object.zh}`, x, y - minor - 8);
+      }
+    }
+
+    // Behind the lines, a faint figure of what the constellation was imagined to be.
+    const figureShine = new Map();
+    for (const [id, shine] of glow) {
+      if (shine < .02) continue;
+      const figure = figureFor(id);
+      if (figure) figureShine.set(figure, Math.max(shine, figureShine.get(figure) || 0));
+    }
+    if (figureShine.size) {
+      const lst = lstNow;
+      for (const [figure, shine] of figureShine) {
+        if (!figure.canvas) continue;
+        const screen = figure.spec.anchors.map(([, , ra, dec]) => {
+          const h = horizontal(ra, dec, lst);
+          return { ...project(h.alt, h.az), alt: h.alt };
+        });
+        if (screen.every(p => p.alt < -5)) continue;
+        // A figure split by the projection's seam (half the sky round) would stretch across the screen.
+        const seam = 120 * height / altitudeSpan;
+        if (Math.abs(screen[0].x - screen[1].x) > seam || Math.abs(screen[0].x - screen[2].x) > seam || Math.abs(screen[1].x - screen[2].x) > seam) continue;
+        const pin = pinFigure(figure.spec.anchors, screen);
+        if (!pin) continue;
+        const cx = (screen[0].x + screen[1].x + screen[2].x) / 3, cy = (screen[0].y + screen[1].y + screen[2].y) / 3;
+        context.save();
+        context.globalCompositeOperation = "lighter";
+        context.globalAlpha = shine * .3 * (cx < width * .55 ? .4 : 1) * (1 - daylight * .4) * quiet(cx, cy);
+        context.transform(pin[0], pin[1], pin[2], pin[3], pin[4] + parallax.x * .5, pin[5] + parallax.y * .5);
+        context.drawImage(figure.canvas, 0, 0);
+        context.restore();
+      }
+    }
+
     context.lineWidth = .7;
     for (const line of lines) {
       const shine = glow.get(line.id) || 0;
@@ -413,12 +591,16 @@
         if (a.alt < 0 && b.alt < 0) continue;
         if (Math.abs(a.x - b.x) > width / 2) continue;
         const readingMask = (a.x + b.x) / 2 < width * .55 ? .45 : 1;
-        context.globalAlpha = (base * readingMask + shine * .5) * (1 - daylight * .25) * quiet((a.x + b.x) / 2, (a.y + b.y) / 2);
+        context.globalAlpha = (base * readingMask + shine * .32) * (1 - daylight * .25) * quiet((a.x + b.x) / 2, (a.y + b.y) / 2);
         // The sky is drawn in cool silver; brass belongs to the instrument.
         context.strokeStyle = shine > .05 ? "#c9d6ec" : "#9cbce4";
+        // Lines stop just short of their stars, as on a printed star chart.
+        const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+        const gap = Math.min(4.5, length * .3) / length;
+        const dx = (b.x - a.x) * gap, dy = (b.y - a.y) * gap;
         context.beginPath();
-        context.moveTo(a.x + parallax.x * .5, a.y + parallax.y * .5);
-        context.lineTo(b.x + parallax.x * .5, b.y + parallax.y * .5);
+        context.moveTo(a.x + dx + parallax.x * .5, a.y + dy + parallax.y * .5);
+        context.lineTo(b.x - dx + parallax.x * .5, b.y - dy + parallax.y * .5);
         context.stroke();
       }
     }

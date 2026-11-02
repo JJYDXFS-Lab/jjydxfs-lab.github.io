@@ -15,7 +15,7 @@ The site is plain HTML, CSS, and JavaScript and requires no build step.
 
 ## The sky
 
-The background is the real night sky above one place, computed for the visitor's current moment: naked-eye stars, the Milky Way, constellations that name themselves near the cursor, and a sky that warms at twilight. A few small games live in it too.
+The background is the real night sky above one place, computed for the visitor's current moment: naked-eye stars, the Milky Way with its bright core and dark rifts, nebulae and galaxies that name themselves, constellations that name themselves and show their figures near the cursor, and a sky that warms at twilight. A few small games live in it too.
 
 The brass armillary sphere beside the two stars can be spun by hand, and its ecliptic ring doubles as a time dial: drag along the ring to move the whole sky to another date at the same hour, and it drifts back to now when released.
 
@@ -26,11 +26,16 @@ window.LAB_SKY_PLACE = {
   name: "Canberra",
   lat: -35.2809,            // south is negative
   lon: 149.13,              // west is negative
-  timeZone: "Australia/Sydney"
+  timeZone: "Australia/Sydney",
+  look: "pole"              // which way the page faces
 };
 ```
 
+`look: "pole"` faces the celestial pole you can see (south from Canberra, where the Southern Cross and the Magellanic Clouds never set). `"equator"` faces the other way, and `"north"`, `"east"`, `"south"`, `"west"` or an azimuth in degrees choose a direction outright.
+
 Star, constellation and name data in [`sky-data.js`](sky-data.js) is derived from [d3-celestial](https://github.com/ofrohn/d3-celestial) by Olaf Frohn, used under the BSD 3-Clause licence.
+
+Constellation figures in [`img/constellations/`](img/constellations/) are by Johan Meuris, from [Stellarium](https://github.com/Stellarium/stellarium), under the [Free Art License 1.3](https://artlibre.org/licence/lal/en/). Their anchor stars in [`sky-figures.js`](sky-figures.js) come from Stellarium's sky culture data (CC BY-SA 4.0). A figure is only downloaded the first time its constellation lights up.
 
 ## Local preview
 
