@@ -544,7 +544,13 @@
     if (zenithLabel) {
       const minutes = Math.floor(siderealDegrees(skyNow()) * 4);
       const dec = SKY_PLACE.lat.toFixed(1).replace("-", "−");
-      zenithLabel.textContent = `ZENITH OVER ${SKY_PLACE.name.toUpperCase()} · RA ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m · DEC ${dec}°`;
+      // Each reading stays whole when the line wraps on a narrow screen.
+      const keep = text => text.replace(/ /g, "\u00a0");
+      zenithLabel.textContent = [
+        `ZENITH OVER ${SKY_PLACE.name.toUpperCase()}`,
+        keep(`RA ${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`),
+        keep(`DEC ${dec}°`)
+      ].join(" · ");
       zenithLabel.hidden = false;
     }
   }
@@ -866,7 +872,9 @@
         start: animationTime,
         x: width * (.48 + Math.random() * .42),
         y: height * (.06 + Math.random() * .3),
-        duration: 1.9 + Math.random() * .8
+        duration: 1.9 + Math.random() * .8,
+        // It carries a story from games.js, worn as its colour; otherwise plain starlight.
+        ...(window.LAB_METEOR?.next() || { story: null, tint: ["#f4eedf", "#b4c9e3", "#f1e3bd"] })
       };
     }
     if (!meteor) return;
@@ -880,8 +888,8 @@
     const tail = Math.min(120, travel * progress);
     if (tail < 1) return;
     const gradient = context.createLinearGradient(x, y, x + tail, y - tail * .52);
-    gradient.addColorStop(0, "#e8e4d9");
-    gradient.addColorStop(.18, "#b4c9e3");
+    gradient.addColorStop(0, meteor.tint[0]);
+    gradient.addColorStop(.18, meteor.tint[1]);
     gradient.addColorStop(1, "transparent");
     context.globalAlpha = Math.sin(progress * Math.PI) * .8;
     context.strokeStyle = gradient;
@@ -890,7 +898,7 @@
     context.moveTo(x, y);
     context.lineTo(x + tail, y - tail * .52);
     context.stroke();
-    context.fillStyle = "#f4eedf";
+    context.fillStyle = meteor.tint[0];
     context.beginPath();
     context.arc(x, y, 1.6, 0, Math.PI * 2);
     context.fill();
@@ -901,8 +909,8 @@
     if (!burst) return;
     const age = (animationTime - burst.start) / .9;
     if (age >= 1) { burst = null; return; }
-    context.strokeStyle = "#f1e3bd";
-    context.fillStyle = "#f6edd6";
+    context.strokeStyle = burst.tint[2];
+    context.fillStyle = burst.tint[0];
     for (let i = 0; i < 10; i += 1) {
       const angle = i / 10 * Math.PI * 2 + burst.spin;
       const reach = 6 + age * 34;
@@ -941,11 +949,12 @@
     if (!meteor || !running) return;
     if (!nearMeteor(event.clientX, event.clientY)) return;
     const head = meteorHead();
-    burst = { x: head.x, y: head.y, start: animationTime, spin: Math.random() * Math.PI };
+    burst = { x: head.x, y: head.y, start: animationTime, spin: Math.random() * Math.PI, tint: meteor.tint };
+    const story = meteor.story;
     meteor = null;
     nextMeteorAt = animationTime + 14 + Math.random() * 12;
     document.documentElement.classList.remove("meteor-near");
-    document.dispatchEvent(new CustomEvent("lab:meteor-caught"));
+    document.dispatchEvent(new CustomEvent("lab:meteor-caught", { detail: { story } }));
   }
 
   function tick(timestamp) {

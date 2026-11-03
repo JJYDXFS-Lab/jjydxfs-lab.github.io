@@ -406,7 +406,10 @@ html.has-miniatures .is-illuminated .project-art svg { transform: none; }
 
 /* Turning the sky round (script.js): a small N–S compass on the zenith line. Its needle
    points the way the sky faces, and swings round with it. */
-.look-toggle { display: inline-grid; place-items: center; width: 30px; height: 30px; margin: -8px 0 -8px 12px; padding: 0; border: 0; border-radius: 50%; background: none; color: #b9c4d4; vertical-align: middle; cursor: pointer; transition: color .2s ease; }
+/* Text and compass side by side: when the reading wraps on a narrow screen, it wraps
+   within its own column instead of running under the compass. */
+.zenith-line { display: flex; align-items: center; gap: 12px; }
+.look-toggle { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; margin: -8px 0; padding: 0; border: 0; border-radius: 50%; background: none; color: #b9c4d4; vertical-align: middle; cursor: pointer; transition: color .2s ease; }
 .look-toggle svg { width: 30px; height: 30px; overflow: visible; }
 .look-toggle .compass-ring { fill: #0b111d80; stroke: currentColor; stroke-opacity: .35; stroke-width: 1; transition: stroke-opacity .2s ease; }
 .look-toggle text { fill: currentColor; font: 600 6.5px "SFMono-Regular", Consolas, monospace; text-anchor: middle; }

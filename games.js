@@ -3,9 +3,12 @@
 
   // Public text supplied by JJYDXFS. A story without `body` still waits for its text
   // and says so plainly instead of inventing one.
-  const stories = {
-    meteor: {
+  // Falling stars bring these in turn, one per catch, starting again once all are read.
+  const meteorStories = [
+    {
       meta: 'A falling star, caught · 2026.10.25 · Atom · 一则虚构小品',
+      // Each story's falling star has its own faint colour: head, tail and sparks.
+      tint: ['#fbe9cc', '#e2bd8a', '#f3d6a4'],
       title: '原子的无用观察：纸箱暂时没有用途',
       body: `主人出门办事，留下一只数字猫和一个纸箱。
 
@@ -24,6 +27,44 @@
 至于纸箱以后有什么用，以后再说。`,
       source: '—— 偷自 Atom 的小练笔 · JJYDXFS'
     },
+    {
+      meta: 'A falling star, caught · 2026.10.31 · Atom · 一则虚构小品',
+      tint: ['#e4f5f1', '#9fd2c8', '#c4e8df'],
+      title: '杯把朝着自己·第一试',
+      body: `男人来领杯子。
+
+“现在是镇纸。”门房说。
+
+男人把杯子拿起来，纸飞到地上。
+
+“现在不是了。”`,
+      source: '—— 偷自 Atom 的小练笔 · JJYDXFS'
+    },
+    {
+      meta: 'A falling star, caught · 2026.11.02 · Atom · 一则虚构小品',
+      tint: ['#e6edff', '#9db6ee', '#c6d4fa'],
+      title: '十七号还在柜台上',
+      body: `寄存处换了新号码牌。
+
+纸条写着：试用，不收物品。
+
+她把湿伞放到柜台上。守柜人递给她十七号，顺手把伞挂到了身后的架子。
+
+“晚上凭这个取。”
+
+她看了看纸条。
+
+守柜人也看了看。
+
+他摘下伞，越过柜台递回来。
+
+“牌子倒是能用了。”她说。
+
+十七号留在柜台上，下面一小圈水。`,
+      source: '—— 偷自 Atom 的小练笔 · JJYDXFS'
+    }
+  ];
+  const stories = {
     atlas: {
       meta: 'Five constellations, one atlas · 2026.10.28 · Atom',
       title: '猫把地址删掉了',
@@ -44,8 +85,8 @@
   const toggle = document.getElementById('motion-toggle');
   const caughtKey = 'jjydxfs-lab-meteors';
 
-  function open(kind, extra = '') {
-    const story = stories[kind];
+  function open(kind, extra = '', chosen = stories[kind]) {
+    const story = chosen;
     meta.textContent = extra ? `${story.meta} · ${extra}` : story.meta;
     title.textContent = story.title;
     title.hidden = !story.title;
@@ -56,16 +97,43 @@
     if (!dialog.open) dialog.showModal();
     dialog.scrollTop = 0;
   }
-  function countCatch() {
-    let caught = 0;
+  // Every falling star carries one story, shown by its colour, and the next star always
+  // carries a different one: let a star go by, and catch the colour you are after.
+  // Stories found are remembered, so the card can say how many of them there are.
+  // Without storage the catches still count, for this visit only.
+  const total = meteorStories.length;
+  const foundKey = 'jjydxfs-lab-meteor-stories';
+  let caught = 0;
+  let found = new Set();
+  try {
+    caught = Number(localStorage.getItem(caughtKey) || 0);
+    JSON.parse(localStorage.getItem(foundKey) || '[]').forEach(i => { if (meteorStories[i]) found.add(i); });
+  } catch { /* A fresh count for this visit. */ }
+  let last = -1;
+  function assign() {
+    let i = last;
+    while (total > 1 && i === last) i = Math.floor(Math.random() * total);
+    last = i;
+    return i;
+  }
+  window.LAB_METEOR = Object.freeze({
+    next() {
+      const story = assign();
+      return { story, tint: meteorStories[story].tint };
+    }
+  });
+  function catchMeteor(event) {
+    const story = meteorStories[event?.detail?.story] ? event.detail.story : assign();
+    caught += 1;
+    found.add(story);
     try {
-      caught = Number(localStorage.getItem(caughtKey) || 0) + 1;
       localStorage.setItem(caughtKey, String(caught));
-    } catch { caught = 0; }
-    return caught ? `No. ${caught}` : '';
+      localStorage.setItem(foundKey, JSON.stringify([...found]));
+    } catch { /* Counted for this visit only. */ }
+    open('meteor', `No. ${caught} · ${found.size}/${total}`, meteorStories[story]);
   }
 
-  document.addEventListener('lab:meteor-caught', () => open('meteor', countCatch()));
+  document.addEventListener('lab:meteor-caught', catchMeteor);
   document.addEventListener('lab:atlas-complete', () => window.setTimeout(() => open('atlas'), 700));
   document.addEventListener('lab:atlas-open', () => open('atlas'));
   close.addEventListener('click', () => dialog.close());
@@ -82,6 +150,6 @@
     const syncFallback = () => { fallback.hidden = toggle.hidden || toggle.getAttribute('aria-pressed') !== 'true'; };
     new MutationObserver(syncFallback).observe(toggle, { attributes: true, attributeFilter: ['aria-pressed', 'hidden'] });
     syncFallback();
-    fallback.addEventListener('click', () => open('meteor', countCatch()));
+    fallback.addEventListener('click', catchMeteor);
   }
 })();
